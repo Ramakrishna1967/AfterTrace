@@ -161,7 +161,7 @@ class AfterTraceApp(App):
 
     CSS = """
     Screen { background: #0d0d0f; }
-    #transcript { height: 1fr; background: transparent; border: none; margin: 0 2; }
+    #transcript { height: 30%; background: transparent; border: none; margin: 0 2; }
     #center { height: auto; width: 100%; align: center middle; padding: 1 0; }
     #logo { height: 5; text-align: center; }
     #prompt-box { width: 68; max-width: 68; height: auto; border: none;
