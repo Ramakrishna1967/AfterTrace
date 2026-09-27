@@ -101,7 +101,7 @@ def _retain_incident(
 
 
 # ---------------- Scenario 1: cold incident ----------------
-def run_scenario1(settings: Settings, console: Console, auto_yes: bool = False, force_local: bool = False) -> int:
+def run_scenario1(settings: Settings, console: Console, auto_yes: bool = False, force_local: bool = False, approver=None) -> int:
     console.print(Panel("SCENARIO 1 -- cold incident: alias drift (no prior memory)", border_style="bold blue"))
     con = sqlite_log.connect(settings.sqlite_path)
     store = QdrantStore(settings, console, force_local=force_local)
@@ -157,7 +157,7 @@ def run_scenario1(settings: Settings, console: Console, auto_yes: bool = False, 
 
     # PROPOSE + APPROVE
     proposal = f"switch alias {alias}: {col_a} -> {col_b}\nEvidence: B exact ({store.count(col_b)} pts), live query rev A.\nPostcondition: exact B + gateway canary returns B."
-    if not ask_approval(console, proposal, auto_yes):
+    if not ask_approval(console, proposal, auto_yes, approver):
         console.print("Cancelled by operator. No writes made.")
         sqlite_log.set_state(con, incident_id, "CANCELLED")
         return 3
@@ -208,7 +208,7 @@ def run_scenario1(settings: Settings, console: Console, auto_yes: bool = False, 
 
 
 # ---------------- Scenario 2: memory-assisted transfer ----------------
-def run_scenario2(settings: Settings, console: Console, auto_yes: bool = False, force_local: bool = False) -> int:
+def run_scenario2(settings: Settings, console: Console, auto_yes: bool = False, force_local: bool = False, approver=None) -> int:
     console.print(Panel("SCENARIO 2 -- memory-assisted transfer on NEW corpus (fresh process)", border_style="bold blue"))
     con = sqlite_log.connect(settings.sqlite_path)
     store = QdrantStore(settings, console, force_local=force_local)
@@ -261,7 +261,7 @@ def run_scenario2(settings: Settings, console: Console, auto_yes: bool = False, 
     console.print("[bold]Hypothesis: alias_drift (memory-assisted, live-confirmed).[/bold]")
 
     proposal = f"switch alias {alias}: {col_a} -> {col_b}\nEvidence: recalled s1 alias-drift + live alias={live}, B exact."
-    if not ask_approval(console, proposal, auto_yes):
+    if not ask_approval(console, proposal, auto_yes, approver):
         sqlite_log.set_state(con, incident_id, "CANCELLED")
         return 3
     live_now = sqlite_log.get_alias(con, alias) or store.get_alias_target(alias)
@@ -302,7 +302,7 @@ def run_scenario2(settings: Settings, console: Console, auto_yes: bool = False, 
 
 
 # ---------------- Scenario 3: reject wrong recalled fix ----------------
-def run_scenario3(settings: Settings, console: Console, auto_yes: bool = False, force_local: bool = False) -> int:
+def run_scenario3(settings: Settings, console: Console, auto_yes: bool = False, force_local: bool = False, approver=None) -> int:
     console.print(Panel("SCENARIO 3 -- same symptom, DIFFERENT cause: reject recalled alias fix", border_style="bold blue"))
     con = sqlite_log.connect(settings.sqlite_path)
     store = QdrantStore(settings, console, force_local=force_local)
@@ -388,7 +388,7 @@ def run_scenario3(settings: Settings, console: Console, auto_yes: bool = False, 
         f"Alias stays {alias} -> {col_b} (UNCHANGED).\n"
         "Postcondition: same query returns live rev B."
     )
-    if not ask_approval(console, proposal, auto_yes):
+    if not ask_approval(console, proposal, auto_yes, approver):
         sqlite_log.set_state(con, incident_id, "CANCELLED")
         return 3
     sqlite_log.clear_cache(con, cache_key)

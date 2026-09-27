@@ -41,6 +41,7 @@ python -m cli reset
 python -m cli scenario1 --yes   # cold alias-drift: detect, fix A->B, verify, retain
 python -m cli scenario2 --yes   # NEW corpus, recall s1, memory-ordered alias check, fix, verify
 python -m cli scenario3 --yes   # same symptom, alias already correct -> REJECT recalled alias fix, fix stale cache instead
+python -m cli tui --local       # interactive full-screen terminal UI (same flows, modal approvals)
 ```
 
 Omit `--yes` for an interactive `y/n` approval prompt (required narrative:
@@ -69,3 +70,4 @@ recalled memory never auto-authorizes; human approves, live preconditions re-che
 - `cli/agent.py` gateway query, exact verification, approval
 - `cli/scenarios.py` the three runs
 - `cli/__main__.py` `python -m cli ...` entry
+- `cli/tui.py` interactive full-screen terminal UI (`python -m cli tui`)

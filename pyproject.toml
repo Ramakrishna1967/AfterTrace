@@ -12,6 +12,7 @@ dependencies = [
     "hindsight-client>=0.10",
     "qdrant-client>=1.12",
     "rich>=13",
+    "textual>=3",
     "mcp[cli]>=2,<3",
 ]
 

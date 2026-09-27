@@ -67,11 +67,18 @@ def verify_target_collection(store: QdrantStore, collection: str, corpus_data: d
     return (len(errors) == 0), errors
 
 
-def ask_approval(console: Console, proposal: str, auto_yes: bool) -> bool:
+def ask_approval(console: Console, proposal: str, auto_yes: bool, approver=None) -> bool:
+    """Approval gate. `approver` is an optional callable(proposal)->bool used by
+    non-stdio frontends (e.g. the Textual TUI modal). Defaults preserve CLI behavior."""
     console.print(Panel(proposal, title="Proposed repair (requires approval)", border_style="yellow"))
     if auto_yes:
         console.print("[yellow]--yes supplied: auto-approving.[/yellow]")
         return True
+    if approver is not None:
+        try:
+            return bool(approver(proposal))
+        except Exception:
+            return False
     try:
         ans = console.input("[bold yellow]Approve and apply? [y/N]: [/bold yellow]").strip().lower()
     except (EOFError, KeyboardInterrupt):

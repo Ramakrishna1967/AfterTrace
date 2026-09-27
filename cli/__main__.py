@@ -74,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         ("scenario3", "Reject wrong recalled alias fix; stale-cache cause."),
         ("check", "Show config presence (no secrets)."),
         ("reset", "Clear local SQLite log + fallback memory (fresh demo)."),
+        ("tui", "Interactive full-screen terminal UI (OpenCode style)."),
     ]:
         s = sub.add_parser(name, help=help_text)
         s.add_argument("--yes", action="store_true", help="Auto-approve repair (non-interactive).")
@@ -85,6 +86,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check(settings, args)
     if args.cmd == "reset":
         return cmd_reset(settings)
+    if args.cmd == "tui":
+        from .tui import main as tui_main
+
+        return tui_main(["--local"] if force_local else [])
     if args.cmd == "scenario1":
         return run_scenario1(settings, console, auto_yes=auto_yes, force_local=force_local)
     if args.cmd == "scenario2":
