@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import os
+import re
 
 from rich.console import Console
 from rich.text import Text
@@ -88,6 +89,14 @@ def parse_command(text: str) -> tuple[str, bool]:
     return cmd.lower(), "--yes" in parts[1:]
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def strip_ansi(text: str) -> str:
+    """Plain-text copy for logs/tests; the RichLog gets the styled version."""
+    return _ANSI_RE.sub("", text)
+
+
 class TUISink:
     """Rich Console target that forwards lines into a RichLog from any thread."""
 
@@ -98,7 +107,7 @@ class TUISink:
     def write(self, text: str) -> int:
         stripped = text.strip("\n")
         if stripped.strip():
-            self._app.captured.append(stripped)
+            self._app.captured.append(strip_ansi(stripped))
             self._app.call_from_thread(self._log.write, Text.from_ansi(stripped))
         return len(text)
 
@@ -328,8 +337,12 @@ class AfterTraceApp(App):
 
         settings = _ls()
         log = self.query_one("#transcript", RichLog)
+        try:
+            width = max(40, self.screen.size.width - 8)
+        except Exception:
+            width = 96
         tconsole = Console(file=TUISink(self, log), force_terminal=True,
-                           color_system="truecolor", width=96, legacy_windows=False)
+                           color_system="truecolor", width=width, legacy_windows=False)
         try:
             if cmd == "check":
                 tconsole.print("[bold]AFTERTRACE config check[/bold] (presence only, values never printed)")

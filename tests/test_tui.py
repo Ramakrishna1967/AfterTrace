@@ -53,7 +53,6 @@ async def test_tui_check_help_unknown_quit():
         assert not app._busy
         _ = inp
 
-
 async def test_tui_palette_open_close():
     app = AfterTraceApp(force_local=True)
     async with app.run_test() as pilot:
@@ -65,3 +64,23 @@ async def test_tui_palette_open_close():
         await pilot.press("escape")
         await pilot.pause(0.5)
         assert not isinstance(app.screen, PaletteScreen)
+
+
+def test_strip_ansi():
+    from cli.tui import strip_ansi
+
+    assert strip_ansi("\x1b[1mhello\x1b[0m world") == "hello world"
+    assert strip_ansi("plain") == "plain"
+
+
+async def test_tui_captured_has_no_ansi():
+    from textual.widgets import Input
+
+    app = AfterTraceApp(force_local=True)
+    async with app.run_test() as pilot:
+        await pilot.click("#prompt-input")
+        await pilot.press(*"/check")
+        await pilot.press("enter")
+        ok = await _wait_until(lambda: any("QDRANT_URL" in line for line in app.captured))
+        assert ok, app.captured
+        assert not any("\x1b" in line for line in app.captured), app.captured[:3]
