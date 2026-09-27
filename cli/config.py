@@ -32,16 +32,16 @@ class Settings:
 
 def load_settings() -> Settings:
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    default_db = os.path.join(here, ".data", "aftertrace_mvp.sqlite3")
+    default_db = os.path.join(here, ".data", "aftertrace_cli.sqlite3")
     return Settings(
         qdrant_url=_get("QDRANT_URL"),
         qdrant_api_key=_get("QDRANT_API_KEY"),
         hindsight_base_url=_get("HINDSIGHT_BASE_URL"),
         hindsight_api_key=_get("HINDSIGHT_API_KEY"),
-        bank_id=os.environ.get("AFTERTRACE_BANK_ID", "aftertrace-mvp"),
+        bank_id=os.environ.get("AFTERTRACE_BANK_ID", "aftertrace"),
         sqlite_path=os.environ.get("AFTERTRACE_DB", default_db),
     )
 
 
-SCOPE_TAGS = ["project:aftertrace-mvp", "env:hackathon", "subsystem:rag"]
+SCOPE_TAGS = ["project:aftertrace", "subsystem:rag"]
 VECTOR_DIM = 32

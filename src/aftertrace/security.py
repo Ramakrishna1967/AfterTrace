@@ -121,7 +121,7 @@ def require_approver_role(principal: dict):
     # may propose and investigate but may NOT approve repairs. Only an
     # explicitly privileged approver/admin may consume a plan.
     # NOTE: caller identity here is header-asserted (see app._principal).
-    # Production must verify identity via a real auth provider; a header
+    # Deployments must verify identity via a real auth provider; a header
     # alone must not confer approver privilege.
     role = principal.get("role", "operator")
     if role not in ("admin", "approver"):

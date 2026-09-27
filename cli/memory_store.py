@@ -49,7 +49,7 @@ class MemoryStore:
             return
         assert self._client is not None
         try:
-            self._client.create_bank(bank_id=self.settings.bank_id, name="AFTERTRACE MVP")
+            self._client.create_bank(bank_id=self.settings.bank_id, name="AFTERTRACE")
         except Exception as e:
             # Bank likely already exists; continue.
             if self.console:

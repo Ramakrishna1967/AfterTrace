@@ -1,6 +1,6 @@
-"""MVP regression tests: fixtures deterministic, verification exact, rejection gate logic.
+"""Regression tests: fixtures deterministic, verification exact, rejection gate logic.
 
-Run: python -m pytest tests/test_mvp_cli.py -q
+Run: python -m pytest tests/test_cli.py -q
 """
 import math
 import sqlite3

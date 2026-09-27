@@ -1,9 +1,9 @@
-# AFTERTRACE MVP — memory-guided incident-recovery CLI
+# AFTERTRACE — memory-guided incident recovery
 
-Hackathon-scoped MVP proving one mechanism end-to-end: **memory proposes, live evidence disposes**.
-Fully cloud, zero local services (except a single SQLite log file). CLI only.
+**Memory proposes, live evidence disposes.** Fully cloud, zero local services
+(except a single SQLite log file). CLI only.
 
-Spec background: `SystemArchitecture.pdf` (Rev 1.1). This MVP implements the
+Spec background: `SystemArchitecture.pdf` (Rev 1.1). This implements the
 detect -> diagnose -> propose -> approve -> fix -> verify -> retain loop plus
 the critical **reject-wrong-recalled-fix** gate.
 
@@ -11,7 +11,7 @@ the critical **reject-wrong-recalled-fix** gate.
 
 - Qdrant Cloud (via `QDRANT_URL` + `QDRANT_API_KEY`) — real vector store.
 - Hindsight Cloud (via `HINDSIGHT_BASE_URL` + `HINDSIGHT_API_KEY`, `hindsight-client` SDK) — real memory.
-- SQLite single file `.data/aftertrace_mvp.sqlite3` — minimal incident/event/alias/cache log.
+- SQLite single file `.data/aftertrace_cli.sqlite3` — minimal incident/event/alias/cache log.
 - Python 3.11+, `qdrant-client`, `hindsight-client`, `rich`. No Docker, no servers, no FastAPI/MCP/SSE.
 - Fake vectors are deterministic hash fixtures (`cli/vectors.py`), clearly labeled `[FIXTURE]`, not embeddings.
 
@@ -26,7 +26,7 @@ set QDRANT_URL=https://xxx.qdrant.cloud
 set QDRANT_API_KEY=...
 set HINDSIGHT_BASE_URL=https://...
 set HINDSIGHT_API_KEY=...
-# optional: set AFTERTRACE_BANK_ID=aftertrace-mvp
+# optional: set AFTERTRACE_BANK_ID=aftertrace
 python -m cli check
 ```
 

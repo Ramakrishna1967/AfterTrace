@@ -1,4 +1,4 @@
-"""Three MVP scenarios. Each is runnable as a separate fresh process."""
+"""Three scenarios. Each is runnable as a separate fresh process."""
 from __future__ import annotations
 
 import datetime
@@ -16,9 +16,9 @@ from .qdrant_store import QdrantStore
 
 def _collections_for(scenario: str) -> tuple[str, str, str]:
     return (
-        f"aftertrace_mvp_{scenario}_a",
-        f"aftertrace_mvp_{scenario}_b",
-        f"aftertrace_mvp_{scenario}_live",
+        f"aftertrace_{scenario}_a",
+        f"aftertrace_{scenario}_b",
+        f"aftertrace_{scenario}_live",
     )
 
 
@@ -66,7 +66,7 @@ def _set_live_alias(con: sqlite3.Connection, store: QdrantStore, alias: str, col
             # Cloud mode: fail closed. A SQLite-only alias while Qdrant
             # still points elsewhere is split-brain; never hide it.
             raise
-        # LOCAL-SIM: SQLite mirror remains authoritative for MVP.
+        # LOCAL-SIM: SQLite mirror remains authoritative.
 
 
 def _recall_step(console: Console, memory: MemoryStore, query: str) -> list:

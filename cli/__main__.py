@@ -23,7 +23,7 @@ console = Console()
 
 
 def cmd_check(settings, args) -> int:
-    console.print("[bold]AFTERTRACE MVP config check[/bold] (presence only, values never printed)")
+    console.print("[bold]AFTERTRACE config check[/bold] (presence only, values never printed)")
     for name, present in [
         ("QDRANT_URL", bool(settings.qdrant_url)),
         ("QDRANT_API_KEY", bool(settings.qdrant_api_key)),
@@ -66,7 +66,7 @@ def cmd_reset(settings) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     settings = load_settings()
-    p = argparse.ArgumentParser(prog="aftertrace-mvp", description="Memory-guided incident-recovery CLI (hackathon MVP).")
+    p = argparse.ArgumentParser(prog="aftertrace", description="Memory-guided incident recovery CLI.")
     sub = p.add_subparsers(dest="cmd", required=True)
     for name, help_text in [
         ("scenario1", "Cold incident: alias drift, no prior memory."),
