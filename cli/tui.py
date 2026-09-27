@@ -26,14 +26,14 @@ from .config import load_settings
 
 VERSION = "0.1.0"
 
-# 5x5 block-letter font (only the glyphs "aftertrace" needs).
+# 5x5 hollow outline glyphs, OpenCode-logo style (only what "aftertrace" needs).
 _GLYPHS = {
-    "a": ["███  ", "█   █", "█████", "█   █", "█   █"],
-    "f": ["█████", "█    ", "████ ", "█    ", "█    "],
-    "t": ["█████", "  █  ", "  █  ", "  █  ", "  █  "],
-    "e": ["█████", "█    ", "████ ", "█    ", "█████"],
-    "r": ["████ ", "█   █", "████ ", "█ █  ", "█  █ "],
-    "c": [" ████", "█    ", "█    ", "█    ", " ████"],
+    "a": [".███.", "█...█", "█████", "█...█", "█...█"],
+    "f": ["█████", "█....", "████.", "█....", "█...."],
+    "t": ["█████", "..█..", "..█..", "..█..", "..█.."],
+    "e": [".████", "█....", "████.", "█....", ".████"],
+    "r": ["████.", "█...█", "████.", "█..█.", "█...█"],
+    "c": [".████", "█....", "█....", "█....", ".████"],
 }
 
 
@@ -155,8 +155,8 @@ class AfterTraceApp(App):
     #transcript { height: 1fr; background: transparent; border: none; margin: 0 2; }
     #center { height: auto; width: 100%; align: center middle; padding: 1 0; }
     #logo { height: 5; text-align: center; }
-    #prompt-box { width: 68; max-width: 68; height: auto; border: solid #2b2b30;
-                  border-left: tall #2f81f7; background: #141416; padding: 0 1; }
+    #prompt-box { width: 68; max-width: 68; height: auto; border: none;
+                  border-left: tall #2f81f7; background: #141416; padding: 1 2; }
     #prompt-input { border: none; height: 1; background: transparent; }
     #prompt-input:focus { border: none; }
     #statusline { height: 1; }
