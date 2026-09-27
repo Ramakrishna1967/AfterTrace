@@ -17,7 +17,7 @@ from rich.console import Console
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, OptionList, RichLog, Static
 from textual.widgets._option_list import Option
@@ -25,6 +25,36 @@ from textual.widgets._option_list import Option
 from .config import load_settings
 
 VERSION = "0.1.0"
+
+# 5x5 block-letter font (only the glyphs "aftertrace" needs).
+_GLYPHS = {
+    "a": ["███  ", "█   █", "█████", "█   █", "█   █"],
+    "f": ["█████", "█    ", "████ ", "█    ", "█    "],
+    "t": ["█████", "  █  ", "  █  ", "  █  ", "  █  "],
+    "e": ["█████", "█    ", "████ ", "█    ", "█████"],
+    "r": ["████ ", "█   █", "████ ", "█ █  ", "█  █ "],
+    "c": [" ████", "█    ", "█    ", "█    ", " ████"],
+}
+
+
+def block_logo() -> Text:
+    """Two-tone block-letter 'aftertrace': dim 'after', bright 'trace'."""
+    rows = []
+    for i in range(5):
+        rows.append(" ".join(_GLYPHS[ch][i] for ch in "after"))
+    left = rows
+    rows = []
+    for i in range(5):
+        rows.append(" ".join(_GLYPHS[ch][i] for ch in "trace"))
+    right = rows
+    out = Text()
+    for i in range(5):
+        if i:
+            out.append("\n")
+        out.append(left[i], style="bold #6e6e72")
+        out.append("  ")
+        out.append(right[i], style="bold #f2f2f4")
+    return out
 
 COMMANDS = (
     ("/scenarios", "List the three recovery runs"),
@@ -121,18 +151,18 @@ class AfterTraceApp(App):
     CSS = """
     Screen { background: #0d0d0f; }
     #transcript { height: 1fr; background: transparent; border: none; margin: 0 2; }
-    #center { height: auto; width: 100%; align: center middle; padding: 1 0 0 0; }
-    #logo { text-align: center; }
-    #tagline { text-align: center; color: #555558; }
-    #prompt-box { width: 88; max-width: 88; border: solid #2b2b30; background: #141416; padding: 0 1; }
-    #prompt-input { border: none; background: transparent; }
+    #center { height: auto; width: 100%; align: center middle; padding: 1 0; }
+    #logo { height: 5; text-align: center; }
+    #prompt-box { width: 68; max-width: 68; height: auto; border: solid #2b2b30;
+                  border-left: tall #2f81f7; background: #141416; padding: 0 1; }
+    #prompt-input { border: none; height: 1; background: transparent; }
     #prompt-input:focus { border: none; }
-    #statusline { color: #555558; }
-    #hints { width: 88; max-width: 88; text-align: right; color: #555558; }
-    #tips { text-align: center; color: #b58900; }
+    #statusline { height: 1; }
+    #hints { width: 68; max-width: 68; height: 1; text-align: right; }
+    #tips { height: 1; text-align: center; }
     #bottombar { dock: bottom; height: 1; background: #0d0d0f; color: #4a4a4e; }
-    #cwd { dock: left; }
-    #ver { dock: right; }
+    #cwd { width: 1fr; }
+    #ver { width: auto; }
     ConfirmScreen, PaletteScreen { align: center middle; }
     #confirm-title { width: 76; text-align: center; color: #e6b800; text-style: bold; }
     #confirm-body { width: 76; max-height: 12; border: solid #3a3a40; background: #141416; padding: 1 2; }
@@ -157,11 +187,7 @@ class AfterTraceApp(App):
     def compose(self) -> ComposeResult:
         yield RichLog(id="transcript", highlight=False, markup=False)
         with Vertical(id="center"):
-            logo = Text()
-            logo.append("after", style="bold #6e6e72")
-            logo.append("trace", style="bold #f2f2f4")
-            yield Static(logo, id="logo")
-            yield Static("memory proposes · live evidence disposes", id="tagline")
+            yield Static(block_logo(), id="logo")
             with Vertical(id="prompt-box"):
                 yield Input(
                     placeholder='Ask anything...  "/scenario1 to detect alias drift"',
@@ -171,7 +197,7 @@ class AfterTraceApp(App):
             yield Static("", id="hints")
             self._tips_widget = Static("", id="tips")
             yield self._tips_widget
-        with Vertical(id="bottombar"):
+        with Horizontal(id="bottombar"):
             yield Static(os.getcwd().replace("/", "\\"), id="cwd")
             yield Static(VERSION, id="ver")
 
