@@ -428,5 +428,43 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def layout_report() -> int:
+    """Headless layout report at the REAL terminal size + code version.
+
+    Paste the output when the TUI looks wrong — it shows exactly where
+    every widget lands and proves which commit is running.
+    """
+    import shutil
+    import subprocess
+
+    async def _run() -> None:
+        cols, rows = shutil.get_terminal_size()
+        print(f"terminal={cols}x{rows}")
+        try:
+            import textual
+
+            print(f"textual={textual.__version__}")
+        except Exception as e:
+            print(f"textual=unknown ({e})")
+        app = AfterTraceApp(force_local=True)
+        async with app.run_test(size=(cols, rows)) as pilot:
+            await pilot.pause(0.5)
+            for sel in ("#transcript", "#center", "#logo", "#prompt-box",
+                        "#prompt-input", "#statusline", "#hints", "#tips", "#bottombar"):
+                try:
+                    print(sel, app.query_one(sel).region)
+                except Exception as e:
+                    print(sel, "ERR", type(e).__name__)
+
+    try:
+        rev = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True, timeout=15).stdout.strip()
+        print("commit=" + (rev or "unknown"))
+    except Exception:
+        print("commit=unknown")
+    asyncio.run(_run())
+    return 0
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

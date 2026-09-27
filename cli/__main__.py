@@ -137,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
         ("demo", "One-command ordered demo: reset -> s1 -> s2 -> s3."),
         ("reset", "Clear local SQLite log + fallback memory (fresh demo)."),
         ("tui", "Interactive full-screen terminal UI (OpenCode style)."),
+        ("tui-layout", "Headless TUI geometry report (paste output when UI looks wrong)."),
     ]:
         s = sub.add_parser(name, help=help_text)
         s.add_argument("--yes", action="store_true", help="Auto-approve repair (non-interactive).")
@@ -156,6 +157,10 @@ def main(argv: list[str] | None = None) -> int:
         from .tui import main as tui_main
 
         return tui_main(["--local"] if force_local else [])
+    if args.cmd == "tui-layout":
+        from .tui import layout_report
+
+        return layout_report()
     if args.cmd == "scenario1":
         return run_scenario1(settings, console, auto_yes=auto_yes, force_local=force_local)
     if args.cmd == "scenario2":
