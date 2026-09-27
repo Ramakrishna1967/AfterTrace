@@ -161,7 +161,9 @@ class AfterTraceApp(App):
 
     CSS = """
     Screen { background: #0d0d0f; }
-    #transcript { height: 30%; background: transparent; border: none; margin: 0 2; }
+    #topgap { height: 1fr; }
+    #bottomgap { height: 1fr; }
+    #transcript { height: auto; max-height: 40%; background: transparent; border: none; margin: 0 2; }
     #center { height: auto; width: 100%; align: center middle; padding: 1 0; }
     #logo { height: 5; text-align: center; }
     #prompt-box { width: 68; max-width: 68; height: auto; border: none;
@@ -196,6 +198,7 @@ class AfterTraceApp(App):
         self._tips_widget: Static | None = None
 
     def compose(self) -> ComposeResult:
+        yield Vertical(id="topgap")
         yield RichLog(id="transcript", highlight=False, markup=False)
         with Vertical(id="center"):
             yield Static(block_logo(), id="logo")
@@ -208,6 +211,7 @@ class AfterTraceApp(App):
             yield Static("", id="hints")
             self._tips_widget = Static("", id="tips")
             yield self._tips_widget
+        yield Vertical(id="bottomgap")
         with Horizontal(id="bottombar"):
             yield Static(os.path.basename(os.getcwd()) or os.getcwd(), id="cwd")
             yield Static(VERSION, id="ver")
