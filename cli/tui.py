@@ -61,6 +61,8 @@ COMMANDS = (
     ("/scenario1", "Cold incident: alias drift, no prior memory"),
     ("/scenario2", "Memory-assisted transfer on a new corpus"),
     ("/scenario3", "Reject a wrong recalled fix (stale cache)"),
+    ("/demo", "Ordered demo: reset -> s1 -> s2 -> s3"),
+    ("/doctor", "Env + dependency + DB check"),
     ("/check", "Show config presence (no secrets)"),
     ("/reset", "Clear local log + fallback memory"),
     ("/clear", "Clear the transcript"),
@@ -210,21 +212,21 @@ class AfterTraceApp(App):
         self._write_line("Welcome to AFTERTRACE. Type /scenarios to list runs, /help for all commands.")
 
     # ----- static chrome -----
-    def _mode(self) -> tuple[str, str, str]:
+    def _mode(self) -> tuple[str, str, str, str]:
         from .config import load_settings as _ls
 
         s = _ls()
         if self._force_local or not s.qdrant_configured:
-            return ("Local", "SIM + FALLBACK", "demo")
-        return ("Cloud", "Qdrant + Hindsight", "live")
+            return ("Local", "SIM + FALLBACK", s.bank_id, "demo")
+        return ("Cloud", "Qdrant + Hindsight", s.bank_id, "live")
 
     def _render_statusline(self) -> None:
-        a, b, c = self._mode()
+        a, b, bank, c = self._mode()
         t = Text()
         t.append(a, style="bold #2f81f7")
         t.append("  ·  ")
         t.append(b, style="#e8e8ea")
-        t.append("  bank aftertrace", style="#555558")
+        t.append(f"  bank {bank}", style="#555558")
         t.append("  ·  ")
         t.append(c, style="#b58900")
         self.query_one("#statusline", Static).update(t)
@@ -305,12 +307,13 @@ class AfterTraceApp(App):
             return
         if cmd == "scenarios":
             self._write_line("/scenario1 — cold alias-drift fix   /scenario2 — memory-assisted transfer")
-            self._write_line("/scenario3 — reject wrong recalled fix (stale cache)   /check · /reset")
+            self._write_line("/scenario3 — reject wrong recalled fix (stale cache)   /demo — all three in order")
+            self._write_line("/check · /doctor · /reset")
             return
         if self._busy:
             self._write_line("A run is already in progress — wait for it to finish.")
             return
-        if cmd in ("scenario1", "scenario2", "scenario3", "check", "reset"):
+        if cmd in ("scenario1", "scenario2", "scenario3", "check", "reset", "doctor", "demo"):
             self._busy = True
             self.run_worker(
                 lambda: self._run_flow(cmd, auto_yes), thread=True, exclusive=True,
@@ -338,6 +341,18 @@ class AfterTraceApp(App):
                 ]:
                     tconsole.print(f"  {name}: {'SET' if present else 'MISSING'}")
                 tconsole.print(f"  bank: {settings.bank_id}")
+                return
+            if cmd == "doctor":
+                from .__main__ import cmd_doctor as _doctor
+
+                _doctor(settings, out=tconsole)
+                return
+            if cmd == "demo":
+                from .__main__ import cmd_demo as _demo
+
+                code = _demo(settings, auto_yes=auto_yes, force_local=self._force_local,
+                             out=tconsole, approver=self._make_approver())
+                self.call_from_thread(self._write_line, f"[demo exit code {code}]")
                 return
             if cmd == "reset":
                 import os as _os

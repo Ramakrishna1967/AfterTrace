@@ -29,7 +29,9 @@ class MemoryStore:
         self.console = console
         self.local = force_local or not settings.hindsight_configured
         here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.fallback_path = os.path.join(here, ".data", "memory_fallback.jsonl")
+        self.fallback_path = os.environ.get(
+            "AFTERTRACE_MEMORY_FALLBACK", os.path.join(here, ".data", "memory_fallback.jsonl")
+        )
         self._client = None
         if not self.local:
             from hindsight_client import Hindsight

@@ -20,21 +20,30 @@ Credentials are read from the environment only. Never hardcoded, never printed.
 ## Setup
 
 ```bash
-pip install "qdrant-client>=1.12" "hindsight-client>=0.10" rich
-# Cloud mode (recommended for judging):
+pip install "qdrant-client>=1.12" "hindsight-client>=0.10" rich textual
+# Cloud mode:
 set QDRANT_URL=https://xxx.qdrant.cloud
 set QDRANT_API_KEY=...
 set HINDSIGHT_BASE_URL=https://...
 set HINDSIGHT_API_KEY=...
 # optional: set AFTERTRACE_BANK_ID=aftertrace
-python -m cli check
+python -m cli doctor
 ```
 
 Without those env vars the tool runs in clearly-labeled
 `LOCAL-SIM` / `LOCAL-FALLBACK` modes so the logic is still demonstrable.
 Pass `--local` to force simulation even with creds set.
 
-## Run (fresh process per scenario, in order)
+## Run
+
+One command runs the full story in order:
+
+```bash
+python -m cli demo --local --yes
+python -m cli tui --local       # interactive full-screen terminal UI (same flows, modal approvals)
+```
+
+Or step by step (each a fresh process):
 
 ```bash
 python -m cli reset

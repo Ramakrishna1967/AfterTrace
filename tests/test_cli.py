@@ -3,7 +3,10 @@
 Run: python -m pytest tests/test_cli.py -q
 """
 import math
+import os
 import sqlite3
+
+import pytest
 
 from cli import fixtures, sqlite_log
 from cli.agent import gateway_query, verify_target_collection
@@ -108,3 +111,49 @@ def test_stale_cache_masks_correct_alias(tmp_path):
     assert got2["revision"] == "B"
     assert sqlite_log.get_alias(con, "live3") == "b3"
     con.close()
+
+
+def test_demo_orders_s1_s2_s3_isolated(tmp_path, monkeypatch):
+    """demo runs reset -> s1 -> s2 -> s3 in-process, all RESOLVED, isolated to tmp."""
+    from rich.console import Console
+
+    from cli.__main__ import cmd_demo
+
+    monkeypatch.setenv("AFTERTRACE_MEMORY_FALLBACK", str(tmp_path / "mem.jsonl"))
+    for var in ("QDRANT_URL", "QDRANT_API_KEY", "HINDSIGHT_BASE_URL", "HINDSIGHT_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    s = _local_settings(tmp_path)
+    out = Console(file=open(os.devnull, "w"), force_terminal=False, width=100)
+    code = cmd_demo(s, auto_yes=True, force_local=True, out=out)
+    assert code == 0
+    con = sqlite_log.connect(s.sqlite_path)
+    try:
+        rows = con.execute("SELECT scenario, state FROM incidents").fetchall()
+    finally:
+        con.close()
+    assert sorted((r[0], r[1]) for r in rows) == [
+        ("s1-cold", "RESOLVED"),
+        ("s2-transfer", "RESOLVED"),
+        ("s3-reject", "RESOLVED"),
+    ]
+
+
+def test_doctor_never_prints_secrets(tmp_path, monkeypatch, capsys):
+    from cli.__main__ import cmd_doctor
+    from cli.config import Settings as S
+
+    monkeypatch.delenv("AFTERTRACE_MEMORY_FALLBACK", raising=False)
+    s = S(
+        qdrant_url="https://example.cloud",
+        qdrant_api_key="super-secret-value-123",
+        hindsight_base_url="https://example.memory",
+        hindsight_api_key="other-secret-456",
+        bank_id="test-bank",
+        sqlite_path=str(tmp_path / "d.sqlite3"),
+    )
+    code = cmd_doctor(s)
+    assert code in (0, 1)
+    text = capsys.readouterr().out
+    assert "super-secret-value-123" not in text
+    assert "other-secret-456" not in text
+    assert "QDRANT_API_KEY" in text  # presence label still shown
