@@ -18,7 +18,7 @@ from rich.console import Console
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Center, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, OptionList, RichLog, Static
 from textual.widgets._option_list import Option
@@ -29,12 +29,12 @@ VERSION = "0.1.0"
 
 # 5x5 hollow outline glyphs, OpenCode-logo style (only what "aftertrace" needs).
 _GLYPHS = {
-    "a": [".███.", "█...█", "█████", "█...█", "█...█"],
-    "f": ["█████", "█....", "████.", "█....", "█...."],
-    "t": ["█████", "..█..", "..█..", "..█..", "..█.."],
-    "e": [".████", "█....", "████.", "█....", ".████"],
-    "r": ["████.", "█...█", "████.", "█..█.", "█...█"],
-    "c": [".████", "█....", "█....", "█....", ".████"],
+    "a": [" ███ ", "█   █", "█████", "█   █", "█   █"],
+    "f": ["█████", "█    ", "████ ", "█    ", "█    "],
+    "t": ["█████", "  █  ", "  █  ", "  █  ", "  █  "],
+    "e": [" ████", "█    ", "████ ", "█    ", " ████"],
+    "r": ["████ ", "█   █", "████ ", "█  █ ", "█   █"],
+    "c": [" ████", "█    ", "█    ", "█    ", " ████"],
 }
 
 
@@ -202,13 +202,15 @@ class AfterTraceApp(App):
         yield RichLog(id="transcript", highlight=False, markup=False)
         with Vertical(id="center"):
             yield Static(block_logo(), id="logo")
-            with Vertical(id="prompt-box"):
-                yield Input(
-                    placeholder='Ask anything...  "/scenario1 to detect alias drift"',
-                    id="prompt-input",
-                )
-                yield Static("", id="statusline")
-            yield Static("", id="hints")
+            with Center():
+                with Vertical(id="prompt-box"):
+                    yield Input(
+                        placeholder='Ask anything...  "/scenario1 to detect alias drift"',
+                        id="prompt-input",
+                    )
+                    yield Static("", id="statusline")
+            with Center():
+                yield Static("", id="hints")
             self._tips_widget = Static("", id="tips")
             yield self._tips_widget
         yield Vertical(id="bottomgap")
