@@ -209,7 +209,7 @@ class AfterTraceApp(App):
             self._tips_widget = Static("", id="tips")
             yield self._tips_widget
         with Horizontal(id="bottombar"):
-            yield Static(os.getcwd().replace("/", "\\"), id="cwd")
+            yield Static(os.path.basename(os.getcwd()) or os.getcwd(), id="cwd")
             yield Static(VERSION, id="ver")
 
     def on_mount(self) -> None:
@@ -218,7 +218,6 @@ class AfterTraceApp(App):
         self._render_tip()
         self.set_interval(12, self._next_tip)
         self.query_one("#prompt-input", Input).focus()
-        self._write_line("Welcome to AFTERTRACE. Type /scenarios to list runs, /help for all commands.")
 
     # ----- static chrome -----
     def _mode(self) -> tuple[str, str, str, str]:
