@@ -43,6 +43,11 @@ python -m cli demo --local --yes
 python -m cli tui --local       # interactive full-screen terminal UI (same flows, modal approvals)
 ```
 
+In the TUI just describe what you want in plain words ("fix the alias drift",
+"show past runs", "what do you remember") or use slash commands:
+`/scenario1 /scenario2 /scenario3 /demo /history /memory /rerun`
+(`tab` completes, `ctrl+p` opens the palette, `ctrl+r` re-runs the last flow).
+
 Or step by step (each a fresh process):
 
 ```bash

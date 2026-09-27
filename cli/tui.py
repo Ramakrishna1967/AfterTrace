@@ -64,6 +64,9 @@ COMMANDS = (
     ("/scenario3", "Reject a wrong recalled fix (stale cache)"),
     ("/demo", "Ordered demo: reset -> s1 -> s2 -> s3"),
     ("/doctor", "Env + dependency + DB check"),
+    ("/history", "Browse past incidents (add a number for detail)"),
+    ("/memory", "Browse retained experience (optional query words)"),
+    ("/rerun", "Repeat the last scenario/demo run"),
     ("/check", "Show config presence (no secrets)"),
     ("/reset", "Clear local log + fallback memory"),
     ("/clear", "Clear the transcript"),
@@ -87,6 +90,43 @@ def parse_command(text: str) -> tuple[str, bool]:
         return "", False
     cmd = parts[0][1:] if parts[0].startswith("/") else parts[0]
     return cmd.lower(), "--yes" in parts[1:]
+
+
+# keyword -> command for plain-text input. Order matters (first match wins).
+_INTENT_RULES = (
+    (("histor", "past run", "previous", "log"), "history"),
+    (("memor", "recall", "remember", "learned"), "memory"),
+    (("cache", "stale cache", "wrong fix", "reject"), "scenario3"),
+    (("transfer", "new corpus", "another", "again", "second"), "scenario2"),
+    (("alias", "drift", "pointer", "old revision", "stale revision"), "scenario1"),
+    (("demo", "all three", "everything", "full run"), "demo"),
+    (("status", "config", "setup", "keys", "check", "doctor"), "doctor"),
+    (("reset", "wipe", "clean slate", "fresh start"), "reset"),
+    (("help", "command", "what can you"), "help"),
+    (("quit", "exit", "bye"), "quit"),
+    (("fix", "repair", "run", "incident", "broken", "wrong"), "scenarios"),
+)
+
+
+def route_text(text: str) -> tuple[str, str]:
+    """Map plain English to (command, rest). Pure, unit-tested.
+
+    Returns ('', '') when nothing matches; the caller then shows a hint.
+    'scenarios' means ambiguous fix intent -> show the chooser list.
+    """
+    low = text.strip().lower()
+    if not low:
+        return "", ""
+    for keywords, cmd in _INTENT_RULES:
+        if any(k in low for k in keywords):
+            if cmd == "memory":
+                # keep the query words after stripping trigger words
+                rest = low
+                for k in ("memory", "recall", "remember", "remembered", "learned", "my", "the"):
+                    rest = rest.replace(k, " ")
+                return cmd, " ".join(rest.split())
+            return cmd, ""
+    return "", ""
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
@@ -188,6 +228,7 @@ class AfterTraceApp(App):
     BINDINGS = [
         Binding("ctrl+p", "palette", "Commands", priority=True),
         Binding("ctrl+q", "quit_app", "Quit"),
+        Binding("ctrl+r", "rerun", "Re-run"),
         Binding("tab", "complete", "Complete", priority=True),
     ]
 
@@ -198,6 +239,8 @@ class AfterTraceApp(App):
         self._busy = False
         self._tip_idx = 0
         self._tips_widget: Static | None = None
+        self._last_run: tuple[str, bool] | None = None
+        self._history: list[tuple[str, str, str, str]] = []
 
     def compose(self) -> ComposeResult:
         yield Vertical(id="topgap")
@@ -277,9 +320,17 @@ class AfterTraceApp(App):
         self._write_line(f"> {text}")
         if text.startswith("/"):
             cmd, auto_yes = parse_command(text)
-            self._dispatch(cmd, auto_yes)
+            rest = text.strip().split()[1:]
+            self._dispatch(cmd, auto_yes, rest)
         else:
-            self._write_line("Type /help for commands (e.g. /scenario1, /check, /quit).")
+            cmd, rest = route_text(text)
+            if not cmd:
+                self._write_line("Not sure what you mean — try /help, /scenarios, or /demo.")
+            elif cmd == "scenarios":
+                self._dispatch(cmd, False, [])
+            else:
+                self._write_line(f"Understood as /{cmd} — running.")
+                self._dispatch(cmd, False, [rest] if rest else [])
 
     def action_complete(self) -> None:
         try:
@@ -310,8 +361,71 @@ class AfterTraceApp(App):
     def action_quit_app(self) -> None:
         self.exit()
 
+    def action_rerun(self) -> None:
+        if self._busy:
+            self._write_line("A run is already in progress — wait for it to finish.")
+            return
+        if not self._last_run:
+            self._write_line("Nothing to re-run yet — try /scenario1 or /demo first.")
+            return
+        cmd, auto_yes = self._last_run
+        self._write_line(f"> /rerun (repeating /{cmd})")
+        self._dispatch(cmd, auto_yes, [])
+
     # ----- dispatch -----
-    def _dispatch(self, cmd: str, auto_yes: bool) -> None:
+    def _show_history(self, arg: str) -> None:
+        """Incident history browser. Bare /history lists; /history N shows detail."""
+        from . import sqlite_log
+        from .config import load_settings as _ls
+
+        settings = _ls()
+        try:
+            con = sqlite_log.connect(settings.sqlite_path)
+        except Exception as e:
+            self._write_line(f"No incident log yet ({e}). Run /demo first.")
+            return
+        try:
+            rows = con.execute(
+                "SELECT id, scenario, state, created_at FROM incidents ORDER BY created_at"
+            ).fetchall()
+        except Exception:
+            self._write_line("No incident log yet. Run /demo first.")
+            con.close()
+            return
+        items = [(r[0], r[1], r[2], r[3]) for r in rows]
+        if arg.strip().isdigit():
+            idx = int(arg.strip()) - 1
+            if 0 <= idx < len(items):
+                iid, scen, state, _ = items[idx]
+                self._write_line(f"[{idx + 1}] {scen} — {state} ({iid[:8]})")
+                try:
+                    evs = con.execute(
+                        "SELECT kind, created_at FROM events WHERE incident_id=? ORDER BY seq",
+                        (iid,),
+                    ).fetchall()
+                except Exception:
+                    evs = []
+                for kind, at in evs:
+                    self._write_line(f"    · {kind}")
+                if not evs:
+                    self._write_line("    (no events recorded)")
+            else:
+                self._write_line(f"No incident #{arg.strip()} — {len(items)} recorded. Try /history.")
+            con.close()
+            return
+        if not items:
+            self._write_line("No incidents recorded yet. Run /demo or /scenario1 first.")
+            con.close()
+            return
+        self._history = items
+        self._write_line(f"Incident history ({len(items)}):")
+        for i, (iid, scen, state, at) in enumerate(items, 1):
+            self._write_line(f"  {i}. {scen} — {state}   ({iid[:8]}, {str(at)[:16]})")
+        self._write_line("Type /history N for the event trail of entry N.")
+        con.close()
+
+    def _dispatch(self, cmd: str, auto_yes: bool, rest: list[str] | None = None) -> None:
+        rest = [r for r in (rest or []) if r != "--yes"]
         if cmd in ("quit", "exit"):
             self.exit()
             return
@@ -322,7 +436,7 @@ class AfterTraceApp(App):
             self._write_line(
                 "Commands: "
                 + ", ".join(c for c, _ in COMMANDS)
-                + "   (append --yes to skip approval)"
+                + "   (append --yes to skip approval; just describe what you want in plain words)"
             )
             return
         if cmd == "scenarios":
@@ -332,12 +446,29 @@ class AfterTraceApp(App):
             self._write_line(
                 "/scenario3 — reject wrong recalled fix (stale cache)   /demo — all three in order"
             )
-            self._write_line("/check · /doctor · /reset")
+            self._write_line("/history · /memory · /rerun · /check · /doctor · /reset")
+            return
+        if cmd == "history":
+            self._show_history(rest[0] if rest else "")
+            return
+        if cmd == "memory":
+            arg = " ".join(rest)
+            self._busy = True
+            self.run_worker(
+                lambda: self._run_flow("memory", False, arg),
+                thread=True,
+                exclusive=True,
+                description="aftertrace-memory",
+            )
+            return
+        if cmd == "rerun":
+            self.action_rerun()
             return
         if self._busy:
             self._write_line("A run is already in progress — wait for it to finish.")
             return
         if cmd in ("scenario1", "scenario2", "scenario3", "check", "reset", "doctor", "demo"):
+            self._last_run = (cmd, auto_yes) if cmd in ("scenario1", "scenario2", "scenario3", "demo") else self._last_run
             self._busy = True
             self.run_worker(
                 lambda: self._run_flow(cmd, auto_yes),
@@ -348,7 +479,7 @@ class AfterTraceApp(App):
         else:
             self._write_line(f"Unknown command /{cmd}. Try /help.")
 
-    def _run_flow(self, cmd: str, auto_yes: bool) -> None:
+    def _run_flow(self, cmd: str, auto_yes: bool, arg: str = "") -> None:
         from .config import load_settings as _ls
         from .scenarios import run_scenario1, run_scenario2, run_scenario3
 
@@ -419,6 +550,26 @@ class AfterTraceApp(App):
                 self.call_from_thread(
                     self._write_line, "reset done. Run /scenario1 -> /scenario2 -> /scenario3."
                 )
+                return
+            if cmd == "memory":
+                from .memory_store import MemoryStore
+
+                query = arg.strip() or "incident alias drift cache revision repair"
+                tconsole.print(f"[bold]Memory browser[/bold] ({MemoryStore(settings, force_local=self._force_local).mode_label})")
+                try:
+                    store = MemoryStore(settings, console=tconsole, force_local=self._force_local)
+                    hits = store.recall(query, max_tokens=1500)
+                    store.close()
+                except Exception as e:
+                    tconsole.print(f"[red]recall failed: {e}[/red]")
+                    return
+                if not hits:
+                    tconsole.print("[dim]No retained experience matches. Run /demo first to create some.[/dim]")
+                    return
+                for i, h in enumerate(hits[:5], 1):
+                    snippet = (h.text or "").replace("\n", " ")[:280]
+                    tconsole.print(f"  [cyan]{i}.[/cyan] doc={h.document_id or '?'}")
+                    tconsole.print(f"     {snippet}...")
                 return
             runners = {
                 "scenario1": run_scenario1,
