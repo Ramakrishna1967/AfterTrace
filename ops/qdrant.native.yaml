@@ -1,0 +1,12 @@
+# ops/qdrant.native.yaml - relative paths use the project root
+log_level: INFO
+storage:
+  storage_path: ./.data/qdrant/storage
+  snapshots_path: ./.data/qdrant/snapshots
+service:
+  host: 127.0.0.1
+  http_port: 6333
+  grpc_port: null
+  enable_cors: false
+cluster:
+  enabled: false

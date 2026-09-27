@@ -1,0 +1,1 @@
+The exact normalized text used for embedding authentication revision B.

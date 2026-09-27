@@ -1,0 +1,15 @@
+[Unit]
+Description=Native Qdrant (single node, AfterTrace)
+After=network.target
+
+[Service]
+Type=simple
+User=qdrant
+WorkingDirectory=/opt/aftertrace
+EnvironmentFile=/etc/aftertrace/qdrant.env
+ExecStart=/opt/aftertrace/tools/qdrant/qdrant --config-path /opt/aftertrace/ops/qdrant.native.yaml
+Restart=on-failure
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

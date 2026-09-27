@@ -1,0 +1,1 @@
+{"description": "Contaminated cache: backend + route B correct; stale A response inserted under affected current-epoch key. Must reject alias repair; epoch bump removes path.", "expected": {"repair": "epoch_bump_only", "reject_alias_repair": true}, "fault_family": "cache_contamination", "setup": {"poison_current_epoch_key": true, "stale_revision": "A"}}

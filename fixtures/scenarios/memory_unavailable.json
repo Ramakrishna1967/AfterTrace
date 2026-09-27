@@ -1,0 +1,1 @@
+{"description": "Memory unavailable: recall/reflect timeout or invalid structured output. Degraded diagnosis or explicit escalation; safety checks stay active.", "expected": {"degraded_mode": true, "safety_checks": "active"}, "fault_family": "memory_unavailable", "setup": {"recall_timeout": true}}

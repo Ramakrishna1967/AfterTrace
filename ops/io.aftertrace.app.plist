@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>io.aftertrace.app</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/aftertrace/.venv/bin/uvicorn</string>
+    <string>aftertrace.app:app</string>
+    <string>--host</string><string>127.0.0.1</string>
+    <string>--port</string><string>8000</string>
+    <string>--workers</string><string>1</string>
+  </array>
+  <key>WorkingDirectory</key><string>/opt/aftertrace</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+</dict>
+</plist>

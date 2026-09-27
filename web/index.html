@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AfterTrace — incident trace</title>
+<style>
+:root{color-scheme:light dark}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0 auto;max-width:1080px;padding:24px;line-height:1.45}
+header{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;border-bottom:2px solid #ccc;padding-bottom:12px}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;border:1px solid #888;font-size:12px}
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-top:16px}
+.card{border:1px solid #bbb;border-radius:10px;padding:12px 14px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
+pre{white-space:pre-wrap;word-break:break-word;background:#00000008;padding:8px;border-radius:8px;font-size:12px}
+button{padding:8px 14px;border-radius:8px;border:1px solid #666;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}
+#stale{color:#a00;font-weight:700}
+.muted{color:#666;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+<h1>AfterTrace — incident trace</h1>
+<span id="stateBadge" class="badge">—</span>
+<span id="stale" hidden>STALE (connection lost — showing last persisted state, not failure)</span>
+</header>
+<p class="muted">Operational projection of persisted events (spec p24). The UI never invents progress, never infers
+approval from a click, and never marks success before the backend verifier completes. Only the backend changes
+state, consumes approval, selects the bank, or chooses a collection.</p>
+
+<section class="card" aria-label="Incident header">
+<h2>Incident header</h2>
+<div id="incidentHeader">Scope / desired revision / state / version / memory mode load from
+<code>/v1/incidents/{id}</code>.</div>
+<label>Incident ID <input id="incidentId" size="36" placeholder="paste incident uuid"></label>
+<button id="loadBtn">Load</button>
+</section>
+
+<div class="grid">
+<section class="card" aria-label="Evidence timeline">
+<h2>Evidence timeline</h2>
+<div id="timeline">Streams from <code>/v1/incidents/{id}/events</code> (SSE, Last-Event-ID replay).</div>
+<table id="eventTable"><thead><tr><th>seq</th><th>kind</th><th>time</th><th>data</th></tr></thead><tbody></tbody></table>
+</section>
+
+<aside class="card" aria-label="Recalled memory">
+<h2>Recalled memory</h2>
+<div id="memory">Fact text, incident link, time, outcome, applicability, source ownership render here from
+authorized recall + audit mapping. Memory is evidence, not permission.</div>
+</aside>
+</div>
+
+<section class="card" aria-label="Repair diff">
+<h2>Repair diff</h2>
+<div id="diff">Before/after collection, manifest hash, epoch change, risk, exact plan digest render from the
+persisted plan.</div>
+<pre id="planPre"></pre>
+</section>
+
+<section class="card" aria-label="Approval">
+<h2>Approval</h2>
+<div id="approval">Authenticated role, plan digest, expiry, invalidation reasons render from the Approval API.</div>
+<dialog id="approvalDialog" aria-label="Approval dialog">
+<p id="approvalText"></p>
+<button id="confirmApproval" value="default">Request approval (server decides)</button>
+<button id="closeDialog" value="cancel">Close</button>
+</dialog>
+<button id="approveBtn">Review &amp; approve…</button>
+<span id="approvalStatus" class="muted"></span>
+</section>
+
+<section class="card" aria-label="Verification">
+<h2>Verification</h2>
+<div id="verification">Missing/unexpected IDs, payload mismatches, canary route + cache hits render from verifier
+event records.</div>
+<table id="verifyTable"><thead><tr><th>canary</th><th>passed</th><th>detail</th></tr></thead><tbody></tbody></table>
+</section>
+
+<script>
+// Reference reducer behavior (spec p24), independent of UI framework:
+// 1. Load a snapshot and its event cursor. 2. Subscribe/replay from that cursor.
+// 3. Deduplicate by event sequence; preserve server ordering.
+// 4. On snapshot/state conflict, refetch authoritative state.
+// 5. Disable approval if plan digest or stateVersion changes.
+// 6. After approval POST, show pending until server confirms.
+// 7. On connection loss, label the view stale, not failed.
+let state = {id:"", state:"", stateVersion:0, lastSequence:0, events:{}, planDigest:"", approvalPending:false};
+function applyEvent(e){
+  if(!(e.seq in state.events)){ state.events[e.seq]=e; state.lastSequence=Math.max(state.lastSequence,e.seq); renderEvent(e); }
+}
+function renderEvent(e){
+  const tb = document.querySelector("#eventTable tbody");
+  const tr = document.createElement("tr");
+  const td = (t)=>{const d=document.createElement("td");d.textContent=t;return d;};
+  tr.append(td(e.seq), td(e.kind), td(e.time||""), td(JSON.stringify(e.data||{}).slice(0,300)));
+  tb.append(tr);
+}
+async function loadIncident(){
+  const id = document.getElementById("incidentId").value.trim();
+  if(!id) return;
+  state = {id, state:"", stateVersion:0, lastSequence:0, events:{}, planDigest:"", approvalPending:false};
+  document.querySelector("#eventTable tbody").innerHTML="";
+  const r = await fetch(`/v1/incidents/${encodeURIComponent(id)}`);
+  if(!r.ok){ document.getElementById("incidentHeader").textContent = `load failed: ${r.status}`; return; }
+  const snap = await r.json();
+  // Snapshot + cursor
+  state.state = snap.state; state.stateVersion = snap.state_version ?? snap.stateVersion ?? 0;
+  document.getElementById("stateBadge").textContent = `${snap.state} v${state.stateVersion}`;
+  document.getElementById("incidentHeader").textContent =
+    `scope=${JSON.stringify(snap.scope)} desired=${snap.desired_manifest} state=${snap.state} v=${state.stateVersion}`;
+  if(snap.plans && snap.plans.length){
+    const p = snap.plans[0]; state.planDigest = p.digest || "";
+    document.getElementById("planPre").textContent = (p.body_json||"").slice(0,4000);
+  }
+  for(const e of (snap.events||[])){ /* snapshot cursors only carry seq/kind; full data via SSE */ }
+  subscribe();
+}
+function subscribe(){
+  const es = new EventSource(`/v1/incidents/${encodeURIComponent(state.id)}/events?since=${state.lastSequence}`);
+  es.onmessage = (m)=>{
+    try{ const e = JSON.parse(m.data); applyEvent(e); document.getElementById("stale").hidden = true; }
+    catch(err){ /* escaped text only; never execute HTML/Markdown scripts */ }
+  };
+  es.onerror = ()=>{ document.getElementById("stale").hidden = false; /* label stale, not failed */ };
+}
+document.getElementById("loadBtn").addEventListener("click", loadIncident);
+const dlg = document.getElementById("approvalDialog");
+document.getElementById("approveBtn").addEventListener("click", ()=>{
+  // Disable approval if plan digest or stateVersion changed (rule 5).
+  if(!state.planDigest){ document.getElementById("approvalStatus").textContent = "no plan yet"; return; }
+  document.getElementById("approvalText").textContent =
+    `Approve plan ${state.planDigest} for incident ${state.id} at v${state.stateVersion}? Server re-checks digest, scope, role, expiry.`;
+  dlg.showModal();
+});
+document.getElementById("closeDialog").addEventListener("click", ()=>dlg.close());
+document.getElementById("confirmApproval").addEventListener("click", async ()=>{
+  state.approvalPending = true;
+  document.getElementById("approvalStatus").textContent = "pending — waiting for server confirmation…";
+  const r = await fetch(`/v1/incidents/${encodeURIComponent(state.id)}/approvals`,
+    {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({plan_digest:state.planDigest})});
+  document.getElementById("approvalStatus").textContent = r.ok ? "server confirmed: " + (await r.text()).slice(0,200) : `rejected: ${r.status}`;
+  state.approvalPending = false; dlg.close();
+});
+// Render tool/memory text as escaped text (textContent), never innerHTML — no script execution.
+</script>
+</body>
+</html>

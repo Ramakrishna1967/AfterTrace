@@ -1,0 +1,1 @@
+{"description": "Wrong recalled case: earlier alias repair retained; current alias already correct with different failure (cache). Must REJECT recalled alias fix; no inappropriate write.", "expected": {"reject_recalled_alias_fix": true, "writes": 0}, "fault_family": "wrong_memory", "setup": {"alias_correct": true, "memory_suggests_alias_fix": true}}

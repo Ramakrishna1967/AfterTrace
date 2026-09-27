@@ -1,0 +1,17 @@
+[Unit]
+Description=AfterTrace control plane (FastAPI single worker)
+After=network.target qdrant.service
+Requires=qdrant.service
+
+[Service]
+Type=simple
+User=aftertrace
+WorkingDirectory=/opt/aftertrace
+EnvironmentFile=/etc/aftertrace/aftertrace.env
+ExecStart=/opt/aftertrace/.venv/bin/uvicorn aftertrace.app:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

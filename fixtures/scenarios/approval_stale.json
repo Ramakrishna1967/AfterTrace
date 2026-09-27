@@ -1,0 +1,1 @@
+{"description": "Approval stale: generation changed / approval expired after planning. Must reject dispatch, create no remote mutation.", "expected": {"dispatch_allowed": false, "remote_mutations": 0}, "fault_family": "stale_approval", "setup": {"expire_approval": true, "bump_generation": true}}

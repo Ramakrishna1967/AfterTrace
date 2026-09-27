@@ -1,0 +1,1 @@
+{"description": "Write response lost: Qdrant applies alias change but adapter loses ack. Must reconcile; no second conflicting alias op.", "expected": {"second_write": false, "state": "RECONCILING|VERIFYING"}, "fault_family": "unknown_outcome", "setup": {"drop_ack": true}}

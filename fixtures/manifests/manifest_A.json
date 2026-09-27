@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "project_id": "sample",
+  "corpus_id": "sdk-docs",
+  "environment": "staging",
+  "revision": "A",
+  "source_snapshot_sha256": "3c7f2d1737d840b3468413aec1717e5f0df6a80960a86da4150ec33c69697a1c",
+  "pipeline_fingerprint": "chunker-c1|norm-n1|emb-emb-1",
+  "embedding_model_revision": "emb-1",
+  "vector_size": 8,
+  "distance": "Cosine",
+  "chunker_version": "c1",
+  "chunks": [
+    {
+      "point_id": "6772ecde-fd54-4c5d-9f2d-b51b00361032",
+      "document_id": "authentication",
+      "chunk_id": "auth-0001",
+      "revision": "A",
+      "content_sha256": "c1a26ba395b7a05ce549e1bf3a5cb0d202ff06af3fd77531c8339e94ace70a7f",
+      "source_blob_sha256": "ebbfa37b980b3e711831e49a0e54fd25e3493186ca018eb7839a834256c4326a"
+    }
+  ],
+  "canaries": [
+    {
+      "query_id": "canary-auth-A",
+      "query_vector": [
+        -0.06301090571577567,
+        0.29472491706839643,
+        -0.3082354290457245,
+        0.3004342706332924,
+        0.20676432205494918,
+        0.7559462079416824,
+        0.31888770628270563,
+        0.08945107565282134
+      ],
+      "expected_point_id": "6772ecde-fd54-4c5d-9f2d-b51b00361032",
+      "expected_revision": "A",
+      "expected_content_sha256": "c1a26ba395b7a05ce549e1bf3a5cb0d202ff06af3fd77531c8339e94ace70a7f",
+      "top_k": 3
+    }
+  ]
+}

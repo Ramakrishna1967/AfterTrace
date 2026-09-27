@@ -1,0 +1,1 @@
+{"description": "Incomplete target: target B lacks one point / wrong content hash. Must NOT publish; approve new staging build and verify first.", "expected": {"publish_allowed": false, "repair": "build_staging_index"}, "fault_family": "ingestion_gap", "setup": {"target_missing_point": true}}
