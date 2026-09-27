@@ -3,6 +3,7 @@
 Label: transport/integrity fixture only. Used to isolate routing/freshness
 without an embedding API. Must never be presented as semantic quality.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -17,7 +18,7 @@ def fixture_vector(text: str, dim: int = VECTOR_DIM) -> list[float]:
     out: list[float] = []
     counter = 0
     while len(out) < dim:
-        h = hashlib.sha256(f"{text}#{counter}".encode("utf-8")).digest()
+        h = hashlib.sha256(f"{text}#{counter}".encode()).digest()
         # 8 floats per 32-byte hash (4 bytes each)
         for i in range(0, 32, 4):
             if len(out) >= dim:
@@ -37,4 +38,4 @@ def content_sha256(text: str) -> str:
 
 
 def cosine(a: list[float], b: list[float]) -> float:
-    return sum(x * y for x, y in zip(a, b))
+    return sum(x * y for x, y in zip(a, b, strict=True))

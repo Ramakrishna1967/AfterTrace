@@ -1,4 +1,5 @@
 """Exact-ID comparison, payload/vector checks (spec p10)."""
+
 import hashlib
 
 from aftertrace.ingest import deterministic_vector
@@ -19,8 +20,11 @@ def _point(pid, doc, chk, rev, text, dim=3):
         "id": pid,
         "vector": deterministic_vector(text, dim),
         "payload": {
-            "project_id": "sample", "corpus_id": "sdk-docs",
-            "document_id": doc, "chunk_id": chk, "revision": rev,
+            "project_id": "sample",
+            "corpus_id": "sdk-docs",
+            "document_id": doc,
+            "chunk_id": chk,
+            "revision": rev,
             "content_sha256": hashlib.sha256(text.encode()).hexdigest(),
             "text": text,
         },
@@ -29,8 +33,14 @@ def _point(pid, doc, chk, rev, text, dim=3):
 
 def _spec(pid, doc, chk, rev, text):
     h = hashlib.sha256(text.encode()).hexdigest()
-    return ChunkSpec(point_id=pid, document_id=doc, chunk_id=chk, revision=rev,
-                     content_sha256=h, source_blob_sha256=h)
+    return ChunkSpec(
+        point_id=pid,
+        document_id=doc,
+        chunk_id=chk,
+        revision=rev,
+        content_sha256=h,
+        source_blob_sha256=h,
+    )
 
 
 def test_compare_clean():
@@ -62,8 +72,10 @@ def test_canary_requires_route_and_revision():
         expected_content_sha256 = h
 
     route = {"collection_name": "build_B", "generation": 5, "cache_epoch": 5}
-    resp = {"route": dict(route),
-            "hits": [{"point_id": pid, "revision": "B", "content_sha256": h, "text": t}]}
+    resp = {
+        "route": dict(route),
+        "hits": [{"point_id": pid, "revision": "B", "content_sha256": h, "text": t}],
+    }
     ok, _ = check_canary(resp, _C(), route)
     assert ok
     bad_route = dict(route, generation=4)

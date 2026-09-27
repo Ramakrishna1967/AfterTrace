@@ -1,11 +1,13 @@
 """Cutover protocol + crash matrix (spec p21)."""
+
 import json
+from datetime import UTC
 
 import pytest
 
-from aftertrace.cutover import Cutover, rollback_guards
+from aftertrace.cutover import Cutover, CutoverError, rollback_guards
 from aftertrace.db import Database
-from aftertrace.execute import build_publish_plan, require_approval
+from aftertrace.execute import build_publish_plan
 from aftertrace.models import plan_digest
 
 
@@ -14,10 +16,17 @@ def _db(tmp_path):
 
 
 def _plan(before):
-    from datetime import datetime, timedelta, timezone
-    return build_publish_plan("inc-1", {"project": "p", "corpus": "c", "environment": "staging"},
-                              "m1", "s1", before, "p_c_build_B",
-                              (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat())
+    from datetime import datetime, timedelta
+
+    return build_publish_plan(
+        "inc-1",
+        {"project": "p", "corpus": "c", "environment": "staging"},
+        "m1",
+        "s1",
+        before,
+        "p_c_build_B",
+        (datetime.now(UTC) + timedelta(minutes=5)).isoformat(),
+    )
 
 
 def test_prepare_rejects_unresolved_prior_write(tmp_path):
@@ -26,22 +35,41 @@ def test_prepare_rejects_unresolved_prior_write(tmp_path):
     try:
         db.insert_manifest(conn, "m1", "p", "c", "staging", "B", "{}")
         db.upsert_route(conn, "p", "c", "staging", "a", "p_c_build_A", "m1")
-        conn.execute("INSERT INTO incidents(id,project_id,corpus_id,environment,desired_manifest,state,terminal,state_version,request_key,created_at,updated_at)"
-                     " VALUES('inc-1','p','c','staging','m1','DIAGNOSING',0,0,'k','t','t')")
-        before = {"alias": "a", "collection": "p_c_build_A", "generation": 1, "cache_epoch": 1, "fence": 1}
+        conn.execute(
+            "INSERT INTO incidents(id,project_id,corpus_id,environment,"
+            "desired_manifest,state,terminal,state_version,"
+            "request_key,created_at,updated_at)"
+            " VALUES('inc-1','p','c','staging','m1','DIAGNOSING',0,0,'k','t','t')"
+        )
+        before = {
+            "alias": "a",
+            "collection": "p_c_build_A",
+            "generation": 1,
+            "cache_epoch": 1,
+            "fence": 1,
+        }
         body = _plan(before)
         body["_digest"] = plan_digest(body)
         # operations.plan_digest FK -> plans(digest): seed the plan row first
         with db.tx_immediate(conn):
-            conn.execute("INSERT INTO plans(digest,incident_id,body_json,created_at) VALUES(?,?,?,?)",
-                         (body["_digest"], "inc-1", json.dumps(body), "t"))
-            conn.execute("INSERT INTO operations(id,incident_id,plan_digest,ordinal,kind,status,request_json,before_json,updated_at)"
-                         " VALUES('op-old','inc-1',?,0,'publish_sealed_index','dispatched','{}','{}','t')",
-                         (body["_digest"],))
+            conn.execute(
+                "INSERT INTO plans(digest,incident_id,body_json,created_at) VALUES(?,?,?,?)",
+                (body["_digest"], "inc-1", json.dumps(body), "t"),
+            )
+            conn.execute(
+                "INSERT INTO operations(id,incident_id,plan_digest,ordinal,"
+                "kind,status,request_json,before_json,updated_at)"
+                " VALUES('op-old','inc-1',?,0,'publish_sealed_index',"
+                "'dispatched','{}','{}','t')",
+                (body["_digest"],),
+            )
         cut = Cutover(db)
-        approval = {"state": "active",
-                    "expires_at": body["not_after"], "plan_digest": body["_digest"]}
-        with pytest.raises(Exception):
+        approval = {
+            "state": "active",
+            "expires_at": body["not_after"],
+            "plan_digest": body["_digest"],
+        }
+        with pytest.raises(CutoverError):
             cut.prepare(conn, "inc-1", body, approval)
     finally:
         conn.close()

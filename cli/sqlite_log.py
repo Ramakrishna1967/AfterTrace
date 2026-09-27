@@ -1,4 +1,5 @@
 """Minimal SQLite incident/event log + alias table + cache-sim table. Single local file."""
+
 from __future__ import annotations
 
 import datetime
@@ -9,7 +10,7 @@ import uuid
 
 
 def _now() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
 def connect(path: str) -> sqlite3.Connection:
@@ -92,9 +93,12 @@ def get_alias(con: sqlite3.Connection, alias: str) -> str | None:
 
 def set_cache(con: sqlite3.Connection, key: str, revision: str, point_id: str, stale: int) -> None:
     con.execute(
-        "INSERT INTO cache_sim(cache_key,response_revision,response_point_id,stale,updated_at)"
-        " VALUES(?,?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET response_revision=excluded.response_revision,"
-        " response_point_id=excluded.response_point_id, stale=excluded.stale, updated_at=excluded.updated_at",
+        "INSERT INTO cache_sim(cache_key,response_revision,"
+        "response_point_id,stale,updated_at)"
+        " VALUES(?,?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET"
+        " response_revision=excluded.response_revision,"
+        " response_point_id=excluded.response_point_id,"
+        " stale=excluded.stale, updated_at=excluded.updated_at",
         (key, revision, point_id, stale, _now()),
     )
     con.commit()

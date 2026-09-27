@@ -1,4 +1,5 @@
 """Authoritative contracts — Pydantic manifest models (spec p5)."""
+
 from __future__ import annotations
 
 import hashlib
@@ -56,7 +57,7 @@ class Manifest(BaseModel):
     canaries: tuple[CanarySpec, ...]
 
     @model_validator(mode="after")
-    def _admission_checks(self) -> "Manifest":
+    def _admission_checks(self) -> Manifest:
         # Reject duplicate point IDs and chunk IDs
         point_ids = [c.point_id for c in self.chunks]
         if len(set(point_ids)) != len(point_ids):
@@ -69,7 +70,8 @@ class Manifest(BaseModel):
         for can in self.canaries:
             if len(can.query_vector) != self.vector_size:
                 raise ValueError(
-                    f"canary {can.query_id}: vector dim {len(can.query_vector)} != {self.vector_size}"
+                    f"canary {can.query_id}: vector dim"
+                    f" {len(can.query_vector)} != {self.vector_size}"
                 )
             if not all(math.isfinite(x) for x in can.query_vector):
                 raise ValueError(f"canary {can.query_id}: non-finite vector")
@@ -98,6 +100,7 @@ class PlanAction(BaseModel):
 
 class RepairPlan(BaseModel):
     """Approval-bound repair plan (spec p19)."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
     schema_version: Literal[1] = 1
     incident_id: str

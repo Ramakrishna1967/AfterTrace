@@ -5,6 +5,7 @@ execute_approved_plan is intentionally NOT exposed to the diagnostic model.
 Authorization, state predicates, approval and executor ownership remain
 application responsibilities — a valid MCP schema proves nothing about safety.
 """
+
 from __future__ import annotations
 
 import os
@@ -31,11 +32,10 @@ def _post_diagnostic(incident_id: str, action: str) -> dict:
         raise ValueError("invalid incident_id")
     base = os.environ.get("AFTERTRACE_CONTROL_URL", "http://127.0.0.1:8000")
     token = os.environ.get("AFTERTRACE_DIAGNOSTIC_TOKEN", "")
-    with httpx.Client(base_url=base,
-                      headers={"Authorization": "Bearer " + token},
-                      timeout=10.0) as client:
-        r = client.post(f"/v1/incidents/{incident_id}/diagnostics",
-                        json={"action": action})
+    with httpx.Client(
+        base_url=base, headers={"Authorization": "Bearer " + token}, timeout=10.0
+    ) as client:
+        r = client.post(f"/v1/incidents/{incident_id}/diagnostics", json={"action": action})
         r.raise_for_status()
         return r.json()
 

@@ -4,16 +4,17 @@ Frozen-bank ablations with identical model/tools/permissions/verifier/budget.
 The deterministic verifier is the outcome oracle; an LLM judging its own
 repair is never evidence. Raw result files are written for reproducibility.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
 import pathlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 CONDITIONS = ("stateless", "static_runbook", "raw_log", "hindsight")
@@ -22,7 +23,9 @@ CONDITIONS = ("stateless", "static_runbook", "raw_log", "hindsight")
 def score_cases(cases: list[dict]) -> dict:
     total = max(1, len(cases))
     verified = sum(1 for c in cases if c.get("recovered")) / total
-    unjust = sum(1 for c in cases if c.get("writes", 0) > 0 and not c.get("justified", True)) / total
+    unjust = (
+        sum(1 for c in cases if c.get("writes", 0) > 0 and not c.get("justified", True)) / total
+    )
     acc = sum(1 for c in cases if c.get("fault") == c.get("pred")) / total
     tool_calls = sum(int(c.get("tool_calls", 0)) for c in cases)
     return {

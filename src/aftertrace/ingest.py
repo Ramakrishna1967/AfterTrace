@@ -1,4 +1,5 @@
 """Immutable staging index creation (spec p6)."""
+
 from __future__ import annotations
 
 import hashlib
@@ -23,7 +24,7 @@ async def create_staging(q: httpx.AsyncClient, name: str, dim: int, points: list
         r = await q.put(
             f"/collections/{name}/points",
             params={"wait": "true", "ordering": "strong"},
-            json={"points": points[start:start + 100]},
+            json={"points": points[start : start + 100]},
         )
         r.raise_for_status()
         if r.json()["result"]["status"] != "completed":
@@ -44,15 +45,23 @@ def deterministic_vector(text: str, dim: int) -> list[float]:
         for i in range(0, len(block), 4):
             if len(vals) >= dim:
                 break
-            v = int.from_bytes(block[i:i + 4], "little") / 2**32 - 0.5
+            v = int.from_bytes(block[i : i + 4], "little") / 2**32 - 0.5
             vals.append(v)
         counter += 1
     norm = math.sqrt(sum(v * v for v in vals)) or 1.0
     return [v / norm for v in vals]
 
 
-def build_point(point_id: str, project_id: str, corpus_id: str, document_id: str,
-                chunk_id: str, revision: str, text: str, dim: int) -> dict:
+def build_point(
+    point_id: str,
+    project_id: str,
+    corpus_id: str,
+    document_id: str,
+    chunk_id: str,
+    revision: str,
+    text: str,
+    dim: int,
+) -> dict:
     content_sha = hashlib.sha256(text.encode("utf-8")).hexdigest()
     return {
         "id": point_id,

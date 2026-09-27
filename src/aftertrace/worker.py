@@ -4,13 +4,14 @@ Implements investigate(incident_id) pseudocode + durable lifecycle (p13).
 States: DETECTED DIAGNOSING PLAN_READY AWAITING_APPROVAL PREPARING MUTATING
         VERIFYING RESOLVED RECONCILING ESCALATED (+ CANCELLED/FAILED terminals)
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from . import diagnose as diag
 from . import planner as planner_mod
@@ -23,7 +24,7 @@ ALLOWLIST = set(diag.ALLOWED_ACTIONS)
 
 
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _digest(data: dict) -> str:
@@ -31,8 +32,15 @@ def _digest(data: dict) -> str:
 
 
 class Worker:
-    def __init__(self, db, gateway=None, memory_factory=None, qdrant_factory=None,
-                 max_steps: int = 8, timeout_s: float = 120.0):
+    def __init__(
+        self,
+        db,
+        gateway=None,
+        memory_factory=None,
+        qdrant_factory=None,
+        max_steps: int = 8,
+        timeout_s: float = 120.0,
+    ):
         self.db = db
         self.gateway = gateway
         self.memory_factory = memory_factory
@@ -87,8 +95,12 @@ class Worker:
         }
         observations.append(obs0)
         with self.db.tx_immediate(conn):
-            self.db.append_event(conn, incident_id, "tool.observed",
-                                 {"observation_id": "obs-0", "tool": "probe_gateway", "status": "ok"})
+            self.db.append_event(
+                conn,
+                incident_id,
+                "tool.observed",
+                {"observation_id": "obs-0", "tool": "probe_gateway", "status": "ok"},
+            )
 
         # Scoped recall
         allowed_ids: set[str] = set()
@@ -106,7 +118,9 @@ class Worker:
             except Exception as e:
                 degraded = True
                 with self.db.tx_immediate(conn):
-                    self.db.append_event(conn, incident_id, "memory.degraded", {"error": str(e)[:500]})
+                    self.db.append_event(
+                        conn, incident_id, "memory.degraded", {"error": str(e)[:500]}
+                    )
 
         start = time.monotonic()
         tool_calls = 0
@@ -119,8 +133,12 @@ class Worker:
             gen = dict(route)["generation"] if route else 0
             if gen != route_gen and route_gen != 0:
                 with self.db.tx_immediate(conn):
-                    self.db.append_event(conn, incident_id, "route.generation_changed",
-                                         {"old": route_gen, "new": gen})
+                    self.db.append_event(
+                        conn,
+                        incident_id,
+                        "route.generation_changed",
+                        {"old": route_gen, "new": gen},
+                    )
                 self._transition(conn, inc, "RECONCILING", reason="routing generation changed")
                 return {"state": "RECONCILING"}
             route_gen = gen
@@ -137,12 +155,14 @@ class Worker:
             # Validate allowlist + budget
             if step.next_action not in ALLOWLIST:
                 with self.db.tx_immediate(conn):
-                    self.db.append_event(conn, incident_id, "diagnostic.rejected",
-                                         {"action": step.next_action})
+                    self.db.append_event(
+                        conn, incident_id, "diagnostic.rejected", {"action": step.next_action}
+                    )
                 continue
             if step.next_action == "escalate":
-                self._persist_terminal(conn, inc, "ESCALATED", observations,
-                                       reason=step.stop_reason or step.reason)
+                self._persist_terminal(
+                    conn, inc, "ESCALATED", observations, reason=step.stop_reason or step.reason
+                )
                 inc["state"] = "ESCALATED"
                 return {"state": "ESCALATED"}
             if step.next_action == "propose_repair":
@@ -150,12 +170,18 @@ class Worker:
                 verdict = diag.classify(self._summarize(observations))
                 if not verdict["repair_eligible"]:
                     with self.db.tx_immediate(conn):
-                        self.db.append_event(conn, incident_id, "repair.insufficient_evidence",
-                                             {"cause": verdict["cause"]})
+                        self.db.append_event(
+                            conn,
+                            incident_id,
+                            "repair.insufficient_evidence",
+                            {"cause": verdict["cause"]},
+                        )
                     # require specific missing evidence: force one more diagnostic
                     step2 = planner_mod.deterministic_fallback(observations)
                     if step2.next_action == "escalate":
-                        self._persist_terminal(conn, inc, "ESCALATED", observations, reason="insufficient evidence")
+                        self._persist_terminal(
+                            conn, inc, "ESCALATED", observations, reason="insufficient evidence"
+                        )
                         return {"state": "ESCALATED"}
                     await self._dispatch(conn, inc, observations, step2, history)
                     tool_calls += 1
@@ -164,20 +190,27 @@ class Worker:
                 plan = self._build_plan(conn, inc, observations)
                 with self.db.tx_immediate(conn):
                     conn.execute(
-                        "INSERT OR IGNORE INTO plans(digest,incident_id,body_json,created_at) VALUES(?,?,?,?)",
+                        "INSERT OR IGNORE INTO plans"
+                        "(digest,incident_id,body_json,created_at) VALUES(?,?,?,?)",
                         (plan["digest"], incident_id, json.dumps(plan["body"]), _utcnow()),
                     )
                     self._set_state(conn, inc, "PLAN_READY")
-                    self.db.append_event(conn, incident_id, "plan.ready", {"digest": plan["digest"]})
+                    self.db.append_event(
+                        conn, incident_id, "plan.ready", {"digest": plan["digest"]}
+                    )
                     self._set_state(conn, inc, "AWAITING_APPROVAL")
-                    self.db.append_event(conn, incident_id, "approval.awaiting", {"digest": plan["digest"]})
+                    self.db.append_event(
+                        conn, incident_id, "approval.awaiting", {"digest": plan["digest"]}
+                    )
                 inc["state"] = "AWAITING_APPROVAL"
                 return {"state": "AWAITING_APPROVAL", "plan": plan["digest"]}
             # read-only tool
             await self._dispatch(conn, inc, observations, step, history)
             tool_calls += 1
             if diag.repeated_call(history):
-                self._persist_terminal(conn, inc, "ESCALATED", observations, reason="repeated calls, no progress")
+                self._persist_terminal(
+                    conn, inc, "ESCALATED", observations, reason="repeated calls, no progress"
+                )
                 return {"state": "ESCALATED"}
 
         self._persist_terminal(conn, inc, "ESCALATED", observations, reason="budget exhausted")
@@ -189,10 +222,18 @@ class Worker:
         for o in observations:
             d = o.get("data", {})
             for k, v in d.items():
-                if k in ("target_passes", "alias_points_to_target", "route_matches_target",
-                         "backend_probe_passes", "gateway_returns_expected", "source_verified",
-                         "generations_mixed", "alias_route_disagree", "outstanding_mutation",
-                         "semantic_only_failure"):
+                if k in (
+                    "target_passes",
+                    "alias_points_to_target",
+                    "route_matches_target",
+                    "backend_probe_passes",
+                    "gateway_returns_expected",
+                    "source_verified",
+                    "generations_mixed",
+                    "alias_route_disagree",
+                    "outstanding_mutation",
+                    "semantic_only_failure",
+                ):
                     flags[k] = v
         return flags
 
@@ -213,12 +254,21 @@ class Worker:
                     data.update({"alias": alias, "target": target, "alias_points_to_target": True})
             except Exception as e:
                 data.update({"status_detail": str(e)[:300]})
-                obs = {"id": obs_id, "tool": tool, "status": "unavailable",
-                       "timestamp": _utcnow(), "data": data}
+                obs = {
+                    "id": obs_id,
+                    "tool": tool,
+                    "status": "unavailable",
+                    "timestamp": _utcnow(),
+                    "data": data,
+                }
                 observations.append(obs)
                 with self.db.tx_immediate(conn):
-                    self.db.append_event(conn, inc["id"], "tool.observed",
-                                         {"observation_id": obs_id, "tool": tool, "status": "unavailable"})
+                    self.db.append_event(
+                        conn,
+                        inc["id"],
+                        "tool.observed",
+                        {"observation_id": obs_id, "tool": tool, "status": "unavailable"},
+                    )
                 return
         if tool == "probe_gateway" and self.gateway is not None:
             try:
@@ -232,25 +282,46 @@ class Worker:
                     from .models import CanarySpec
 
                     cs = CanarySpec(**can)
-                    route = dict(self.db.get_route(conn, inc["project_id"], inc["corpus_id"], inc["environment"]))
-                    principal = {"project_id": inc["project_id"], "corpus_id": inc["corpus_id"],
-                                 "environment": inc["environment"], "acl_scope": ["tenant:a"]}
+                    route = dict(
+                        self.db.get_route(
+                            conn, inc["project_id"], inc["corpus_id"], inc["environment"]
+                        )
+                    )
+                    principal = {
+                        "project_id": inc["project_id"],
+                        "corpus_id": inc["corpus_id"],
+                        "environment": inc["environment"],
+                        "acl_scope": ["tenant:a"],
+                    }
                     res = await verify_mod.probe_twice(self.gateway, cs, route, principal)
                     data.update({"probe": res["passed"], "gateway_returns_expected": res["passed"]})
             except Exception as e:
                 data.update({"status_detail": str(e)[:300]})
-        obs = {"id": obs_id, "tool": tool, "status": "ok", "timestamp": _utcnow(),
-               "route_generation": 0, "source_tool": tool,
-               "content_digest": _digest(data), "data": data}
+        obs = {
+            "id": obs_id,
+            "tool": tool,
+            "status": "ok",
+            "timestamp": _utcnow(),
+            "route_generation": 0,
+            "source_tool": tool,
+            "content_digest": _digest(data),
+            "data": data,
+        }
         observations.append(obs)
         with self.db.tx_immediate(conn):
-            self.db.append_event(conn, inc["id"], "tool.observed",
-                                 {"observation_id": obs_id, "tool": tool, "status": "ok"})
+            self.db.append_event(
+                conn,
+                inc["id"],
+                "tool.observed",
+                {"observation_id": obs_id, "tool": tool, "status": "ok"},
+            )
 
     def _build_plan(self, conn, inc, observations: list[dict]) -> dict:
         from . import execute as ex
 
-        route = dict(self.db.get_route(conn, inc["project_id"], inc["corpus_id"], inc["environment"]))
+        route = dict(
+            self.db.get_route(conn, inc["project_id"], inc["corpus_id"], inc["environment"])
+        )
         expected_before = {
             "alias": route["alias_name"],
             "collection": route["collection_name"],
@@ -264,17 +335,20 @@ class Worker:
 
         manifest = _json.loads(dict(mrow)["body_json"])
         target = f"{inc['project_id']}_{inc['corpus_id']}_build_{manifest.get('revision', 'B')}"
-        not_after = datetime.now(timezone.utc).isoformat()
         # Distinguish cache-only vs publish via summarize flags
         flags = self._summarize(observations)
         body = ex.build_publish_plan(
             inc["id"],
-            {"project": inc["project_id"], "corpus": inc["corpus_id"], "environment": inc["environment"]},
+            {
+                "project": inc["project_id"],
+                "corpus": inc["corpus_id"],
+                "environment": inc["environment"],
+            },
             inc["desired_manifest"],
             manifest.get("source_snapshot_sha256", ""),
             expected_before,
             target,
-            (datetime.now(timezone.utc)).isoformat(),
+            (datetime.now(UTC)).isoformat(),
         )
         if flags.get("cause") == "query_cache_contamination":
             body = {**body, "actions": [{"kind": "epoch_bump_only", "target": None}]}
@@ -282,8 +356,10 @@ class Worker:
         return {"digest": digest, "body": body}
 
     def _set_state(self, conn, inc, new_state: str):
-        conn.execute("UPDATE incidents SET state=?, state_version=state_version+1, updated_at=? WHERE id=?",
-                     (new_state, _utcnow(), inc["id"]))
+        conn.execute(
+            "UPDATE incidents SET state=?, state_version=state_version+1, updated_at=? WHERE id=?",
+            (new_state, _utcnow(), inc["id"]),
+        )
         inc["state"] = new_state
 
     def _transition(self, conn, inc, new_state: str, terminal: int = 0, reason: str = ""):
@@ -291,8 +367,9 @@ class Worker:
             self._set_state(conn, inc, new_state)
             if terminal:
                 conn.execute("UPDATE incidents SET terminal=1 WHERE id=?", (inc["id"],))
-            self.db.append_event(conn, inc["id"], "state.transition",
-                                 {"to": new_state, "reason": reason})
+            self.db.append_event(
+                conn, inc["id"], "state.transition", {"to": new_state, "reason": reason}
+            )
 
     def _persist_terminal(self, conn, inc, state: str, observations: list[dict], reason: str):
         # Commit terminal status + terminal event + outbox row in one tx (spec p8)
@@ -303,27 +380,51 @@ class Worker:
         event_id = str(uuid.uuid4())
         summary = sec.sanitize_summary(
             f"Scope: {inc['project_id']}/{inc['environment']}/{inc['corpus_id']} "
-            f"outcome {state}: {reason} | obs={len(observations)}")
+            f"outcome {state}: {reason} | obs={len(observations)}"
+        )
         with self.db.tx_immediate(conn):
-            conn.execute("UPDATE incidents SET state=?, terminal=1, state_version=state_version+1, updated_at=? WHERE id=?",
-                         (state, _utcnow(), inc["id"]))
-            self.db.append_event(conn, inc["id"], "incident.terminal",
-                                 {"state": state, "reason": sec.redact(reason)[:1000], "event_id": event_id})
+            conn.execute(
+                "UPDATE incidents SET state=?, terminal=1,"
+                " state_version=state_version+1, updated_at=? WHERE id=?",
+                (state, _utcnow(), inc["id"]),
+            )
+            self.db.append_event(
+                conn,
+                inc["id"],
+                "incident.terminal",
+                {"state": state, "reason": sec.redact(reason)[:1000], "event_id": event_id},
+            )
             try:
                 row = obox.build_outbox_row(
-                    inc["id"], event_id,
+                    inc["id"],
+                    event_id,
                     f"aftertrace-{inc['project_id']}-{inc['environment']}",
                     summary,
-                    [f"project:{inc['project_id']}", f"env:{inc['environment']}",
-                     "subsystem:rag", "compat:qdrant-local-v1"],
+                    [
+                        f"project:{inc['project_id']}",
+                        f"env:{inc['environment']}",
+                        "subsystem:rag",
+                        "compat:qdrant-local-v1",
+                    ],
                     {"incident_id": inc["id"], "outcome": state},
                 )
                 conn.execute(
-                    "INSERT OR IGNORE INTO memory_outbox(event_id,incident_id,document_id,bank_id,payload_json,payload_sha256,operation_id,state,attempts,next_attempt_at)"
+                    "INSERT OR IGNORE INTO memory_outbox(event_id,incident_id,"
+                    "document_id,bank_id,payload_json,payload_sha256,"
+                    "operation_id,state,attempts,next_attempt_at)"
                     " VALUES(?,?,?,?,?,?,?,?,?,?)",
-                    (row["event_id"], row["incident_id"], row["document_id"], row["bank_id"],
-                     row["payload_json"], row["payload_sha256"], row["operation_id"],
-                     "pending", 0, row["next_attempt_at"]),
+                    (
+                        row["event_id"],
+                        row["incident_id"],
+                        row["document_id"],
+                        row["bank_id"],
+                        row["payload_json"],
+                        row["payload_sha256"],
+                        row["operation_id"],
+                        "pending",
+                        0,
+                        row["next_attempt_at"],
+                    ),
                 )
             except Exception:
                 pass
@@ -344,12 +445,20 @@ class Worker:
                 ops = self.db.unresolved_operations(conn, inc["id"])
                 if inc["state"] == "AWAITING_APPROVAL":
                     out["idle_approvals"].append(inc["id"])
-                elif ops and any(o["status"] in ("dispatched", "unknown") for o in [dict(x) for x in ops]):
+                elif ops and any(
+                    o["status"] in ("dispatched", "unknown") for o in [dict(x) for x in ops]
+                ):
                     with self.db.tx_immediate(conn):
-                        self.db.set_route_mode(conn, inc["project_id"], inc["corpus_id"],
-                                               inc["environment"], "reconcile")
-                        self.db.append_event(conn, inc["id"], "startup.reconcile",
-                                             {"ops": len(ops)})
+                        self.db.set_route_mode(
+                            conn,
+                            inc["project_id"],
+                            inc["corpus_id"],
+                            inc["environment"],
+                            "reconcile",
+                        )
+                        self.db.append_event(
+                            conn, inc["id"], "startup.reconcile", {"ops": len(ops)}
+                        )
                     out["reconciling"].append(inc["id"])
                 else:
                     out["resumable"].append(inc["id"])
@@ -374,8 +483,9 @@ class Worker:
             if r is None:
                 raise ValueError("unknown incident")
             inc = dict(r)
-            plan_rows = conn.execute("SELECT digest, body_json FROM plans WHERE incident_id=?",
-                                     (incident_id,)).fetchall()
+            plan_rows = conn.execute(
+                "SELECT digest, body_json FROM plans WHERE incident_id=?", (incident_id,)
+            ).fetchall()
             if not plan_rows:
                 raise ValueError("no plan for incident")
             plan_digest_val, plan_json = plan_rows[0][0], plan_rows[0][1]
@@ -387,40 +497,64 @@ class Worker:
             approval = dict(appr)
             kind = (plan_body.get("actions") or [{"kind": "publish_sealed_index"}])[0].get("kind")
             scope = plan_body["scope"]
-            scope_d = {"project": scope["project"], "corpus": scope["corpus"],
-                       "environment": scope["environment"]}
+            scope_d = {
+                "project": scope["project"],
+                "corpus": scope["corpus"],
+                "environment": scope["environment"],
+            }
 
             if kind == "epoch_bump_only":
                 # Cache-only: verify backend+routing first (caller guarantees), then bump.
-                route = dict(self.db.get_route(conn, scope_d["project"], scope_d["corpus"],
-                                               scope_d["environment"]))
-                snapshot = plan_body["expected_before"]
-                live = {"alias": route["alias_name"], "collection": route["collection_name"],
-                        "generation": route["generation"], "cache_epoch": route["cache_epoch"],
-                        "fence": route["fence"]}
+                route = dict(
+                    self.db.get_route(
+                        conn, scope_d["project"], scope_d["corpus"], scope_d["environment"]
+                    )
+                )
+                live = {
+                    "alias": route["alias_name"],
+                    "collection": route["collection_name"],
+                    "generation": route["generation"],
+                    "cache_epoch": route["cache_epoch"],
+                    "fence": route["fence"],
+                }
                 ex.require_approval(approval, plan_body, live)
                 with self.db.tx_immediate(conn):
-                    conn.execute("UPDATE approvals SET state='consumed' WHERE id=? AND state='active'",
-                                 (approval_id,))
-                    self.db.append_event(conn, incident_id, "approval.consumed",
-                                         {"approval_id": approval_id})
-                bumped = self.db.bump_cache_epoch(conn, scope_d["project"], scope_d["corpus"],
-                                                  scope_d["environment"])
+                    conn.execute(
+                        "UPDATE approvals SET state='consumed' WHERE id=? AND state='active'",
+                        (approval_id,),
+                    )
+                    self.db.append_event(
+                        conn, incident_id, "approval.consumed", {"approval_id": approval_id}
+                    )
+                bumped = self.db.bump_cache_epoch(
+                    conn, scope_d["project"], scope_d["corpus"], scope_d["environment"]
+                )
                 with self.db.tx_immediate(conn):
-                    conn.execute("UPDATE incidents SET state='VERIFYING', state_version=state_version+1,"
-                                 " updated_at=? WHERE id=?", (_utcnow(), incident_id))
+                    conn.execute(
+                        "UPDATE incidents SET state='VERIFYING', state_version=state_version+1,"
+                        " updated_at=? WHERE id=?",
+                        (_utcnow(), incident_id),
+                    )
                 # Ordinary cache-enabled gateway probes (verification determines recovery)
-                route2 = dict(self.db.get_route(conn, scope_d["project"], scope_d["corpus"],
-                                                scope_d["environment"]))
+                route2 = dict(
+                    self.db.get_route(
+                        conn, scope_d["project"], scope_d["corpus"], scope_d["environment"]
+                    )
+                )
                 passed = True
                 if self.gateway is not None:
                     try:
                         mrow = self.db.get_manifest(conn, inc["desired_manifest"])
                         manifest = json.loads(dict(mrow)["body_json"])
-                        from .models import CanarySpec
                         from . import verify as vmod
-                        principal = {"project_id": scope_d["project"], "corpus_id": scope_d["corpus"],
-                                     "environment": scope_d["environment"], "acl_scope": ["tenant:a"]}
+                        from .models import CanarySpec
+
+                        principal = {
+                            "project_id": scope_d["project"],
+                            "corpus_id": scope_d["corpus"],
+                            "environment": scope_d["environment"],
+                            "acl_scope": ["tenant:a"],
+                        }
                         for c in manifest.get("canaries", [])[:3]:
                             cs = CanarySpec(**c)
                             res = await vmod.probe_twice(self.gateway, cs, route2, principal)
@@ -430,30 +564,53 @@ class Worker:
                 if passed:
                     event_id = str(uuid.uuid4())
                     row = obox.build_outbox_row(
-                        incident_id, event_id,
+                        incident_id,
+                        event_id,
                         f"aftertrace-{scope_d['project']}-{scope_d['environment']}",
                         f"Scope: {scope_d['project']}/{scope_d['environment']}/{scope_d['corpus']} "
                         f"cache epoch {bumped['before_epoch']}->{bumped['after_epoch']} verified",
-                        [f"project:{scope_d['project']}", f"env:{scope_d['environment']}",
-                         "subsystem:rag", "compat:qdrant-local-v1"],
-                        {"incident_id": incident_id, "outcome": "RESOLVED"})
+                        [
+                            f"project:{scope_d['project']}",
+                            f"env:{scope_d['environment']}",
+                            "subsystem:rag",
+                            "compat:qdrant-local-v1",
+                        ],
+                        {"incident_id": incident_id, "outcome": "RESOLVED"},
+                    )
                     with self.db.tx_immediate(conn):
-                        conn.execute("UPDATE incidents SET state='RESOLVED', terminal=1,"
-                                     " state_version=state_version+1, updated_at=? WHERE id=?",
-                                     (_utcnow(), incident_id))
-                        self.db.append_event(conn, incident_id, "incident.resolved",
-                                             {"epoch": bumped})
                         conn.execute(
-                            "INSERT OR IGNORE INTO memory_outbox(event_id,incident_id,document_id,bank_id,"
-                            "payload_json,payload_sha256,operation_id,state,attempts,next_attempt_at)"
+                            "UPDATE incidents SET state='RESOLVED', terminal=1,"
+                            " state_version=state_version+1, updated_at=? WHERE id=?",
+                            (_utcnow(), incident_id),
+                        )
+                        self.db.append_event(
+                            conn, incident_id, "incident.resolved", {"epoch": bumped}
+                        )
+                        conn.execute(
+                            "INSERT OR IGNORE INTO memory_outbox(event_id,"
+                            "incident_id,document_id,bank_id,"
+                            "payload_json,payload_sha256,operation_id,state,"
+                            "attempts,next_attempt_at)"
                             " VALUES(?,?,?,?,?,?,?,?,?,?)",
-                            (row["event_id"], row["incident_id"], row["document_id"], row["bank_id"],
-                             row["payload_json"], row["payload_sha256"], row["operation_id"],
-                             "pending", 0, row["next_attempt_at"]))
+                            (
+                                row["event_id"],
+                                row["incident_id"],
+                                row["document_id"],
+                                row["bank_id"],
+                                row["payload_json"],
+                                row["payload_sha256"],
+                                row["operation_id"],
+                                "pending",
+                                0,
+                                row["next_attempt_at"],
+                            ),
+                        )
                     return {"state": "RESOLVED", "epoch": bumped}
                 with self.db.tx_immediate(conn):
-                    conn.execute("UPDATE incidents SET state='RECONCILING', updated_at=? WHERE id=?",
-                                 (_utcnow(), incident_id))
+                    conn.execute(
+                        "UPDATE incidents SET state='RECONCILING', updated_at=? WHERE id=?",
+                        (_utcnow(), incident_id),
+                    )
                 return {"state": "RECONCILING", "reason": "postconditions failed"}
 
             # Publish path: full 8-step cutover
@@ -468,39 +625,64 @@ class Worker:
             alias = prep["before"]["alias"]
             expected_old = prep["before"]["collection"]
             try:
-                await cut.mutate(conn, incident_id, prep["operation_id"], alias,
-                                 expected_old, target, approval_id=approval_id)
+                await cut.mutate(
+                    conn,
+                    incident_id,
+                    prep["operation_id"],
+                    alias,
+                    expected_old,
+                    target,
+                    approval_id=approval_id,
+                )
             except Exception as exc:
                 from .cutover import OutcomeUnknown as _OU
+
                 if isinstance(exc, _OU):
                     await cut.reconcile(conn, incident_id, scope_d, alias)
                     return {"state": "RECONCILING", "reason": str(exc)[:300]}
                 raise
             await cut.observe(alias, target)
             mrow = self.db.get_manifest(conn, inc["desired_manifest"])
-            new_tuple = cut.install(conn, incident_id, scope_d, target, inc["desired_manifest"])
+            cut.install(conn, incident_id, scope_d, target, inc["desired_manifest"])
             # Verify with real gateway probes (installed verifying tuple)
             manifest = json.loads(dict(mrow)["body_json"])
             from .models import CanarySpec
+
             canaries = [CanarySpec(**c) for c in manifest.get("canaries", [])[:3]]
-            principal = {"project_id": scope_d["project"], "corpus_id": scope_d["corpus"],
-                         "environment": scope_d["environment"], "acl_scope": ["tenant:a"]}
-            live_route = dict(self.db.get_route(conn, scope_d["project"], scope_d["corpus"],
-                                                scope_d["environment"]))
+            principal = {
+                "project_id": scope_d["project"],
+                "corpus_id": scope_d["corpus"],
+                "environment": scope_d["environment"],
+                "acl_scope": ["tenant:a"],
+            }
+            live_route = dict(
+                self.db.get_route(
+                    conn, scope_d["project"], scope_d["corpus"], scope_d["environment"]
+                )
+            )
             v = await cut.verify(conn, incident_id, live_route, canaries, principal)
             if not v["passed"]:
                 with self.db.tx_immediate(conn):
-                    conn.execute("UPDATE incidents SET state='RECONCILING', updated_at=? WHERE id=?",
-                                 (_utcnow(), incident_id))
+                    conn.execute(
+                        "UPDATE incidents SET state='RECONCILING', updated_at=? WHERE id=?",
+                        (_utcnow(), incident_id),
+                    )
                 return {"state": "RECONCILING", "reason": "postconditions failed"}
             event_id = str(uuid.uuid4())
             row = obox.build_outbox_row(
-                incident_id, event_id, f"aftertrace-{scope_d['project']}-{scope_d['environment']}",
+                incident_id,
+                event_id,
+                f"aftertrace-{scope_d['project']}-{scope_d['environment']}",
                 f"Scope: {scope_d['project']}/{scope_d['environment']}/{scope_d['corpus']} "
                 f"alias {alias} {expected_old}->{target} verified",
-                [f"project:{scope_d['project']}", f"env:{scope_d['environment']}",
-                 "subsystem:rag", "compat:qdrant-local-v1"],
-                {"incident_id": incident_id, "outcome": "RESOLVED"})
+                [
+                    f"project:{scope_d['project']}",
+                    f"env:{scope_d['environment']}",
+                    "subsystem:rag",
+                    "compat:qdrant-local-v1",
+                ],
+                {"incident_id": incident_id, "outcome": "RESOLVED"},
+            )
             return cut.publish(conn, incident_id, scope_d, row)
         finally:
             conn.close()

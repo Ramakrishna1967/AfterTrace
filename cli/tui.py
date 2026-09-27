@@ -7,6 +7,7 @@ Approval prompts appear as modal dialogs (never stdin).
 
 Run: python -m cli tui [--local]
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -22,8 +23,6 @@ from textual.containers import Center, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, OptionList, RichLog, Static
 from textual.widgets._option_list import Option
-
-from .config import load_settings
 
 VERSION = "0.1.0"
 
@@ -56,6 +55,7 @@ def block_logo() -> Text:
         out.append("  ")
         out.append(right[i], style="bold #f2f2f4")
     return out
+
 
 COMMANDS = (
     ("/scenarios", "List the three recovery runs"),
@@ -100,7 +100,7 @@ def strip_ansi(text: str) -> str:
 class TUISink:
     """Rich Console target that forwards lines into a RichLog from any thread."""
 
-    def __init__(self, app: "AfterTraceApp", log: RichLog):
+    def __init__(self, app: AfterTraceApp, log: RichLog):
         self._app = app
         self._log = log
 
@@ -163,7 +163,8 @@ class AfterTraceApp(App):
     Screen { background: #0d0d0f; }
     #topgap { height: 1fr; }
     #bottomgap { height: 1fr; }
-    #transcript { height: auto; max-height: 40%; background: transparent; border: none; margin: 0 2; }
+    #transcript { height: auto; max-height: 40%; background: transparent;
+                  border: none; margin: 0 2; }
     #center { height: auto; width: 100%; align: center middle; padding: 1 0; }
     #logo { height: 5; text-align: center; }
     #prompt-box { width: 68; max-width: 68; height: auto; border: none;
@@ -178,7 +179,8 @@ class AfterTraceApp(App):
     #ver { width: auto; }
     ConfirmScreen, PaletteScreen { align: center middle; }
     #confirm-title { width: 76; text-align: center; color: #e6b800; text-style: bold; }
-    #confirm-body { width: 76; max-height: 12; border: solid #3a3a40; background: #141416; padding: 1 2; }
+    #confirm-body { width: 76; max-height: 12; border: solid #3a3a40;
+                   background: #141416; padding: 1 2; }
     #confirm-hint { width: 76; text-align: center; color: #555558; }
     #palette { width: 76; max-height: 14; border: solid #3a3a40; background: #141416; }
     """
@@ -317,11 +319,19 @@ class AfterTraceApp(App):
             self.query_one("#transcript", RichLog).clear()
             return
         if cmd == "help":
-            self._write_line("Commands: " + ", ".join(c for c, _ in COMMANDS) + "   (append --yes to skip approval)")
+            self._write_line(
+                "Commands: "
+                + ", ".join(c for c, _ in COMMANDS)
+                + "   (append --yes to skip approval)"
+            )
             return
         if cmd == "scenarios":
-            self._write_line("/scenario1 — cold alias-drift fix   /scenario2 — memory-assisted transfer")
-            self._write_line("/scenario3 — reject wrong recalled fix (stale cache)   /demo — all three in order")
+            self._write_line(
+                "/scenario1 — cold alias-drift fix   /scenario2 — memory-assisted transfer"
+            )
+            self._write_line(
+                "/scenario3 — reject wrong recalled fix (stale cache)   /demo — all three in order"
+            )
             self._write_line("/check · /doctor · /reset")
             return
         if self._busy:
@@ -330,7 +340,9 @@ class AfterTraceApp(App):
         if cmd in ("scenario1", "scenario2", "scenario3", "check", "reset", "doctor", "demo"):
             self._busy = True
             self.run_worker(
-                lambda: self._run_flow(cmd, auto_yes), thread=True, exclusive=True,
+                lambda: self._run_flow(cmd, auto_yes),
+                thread=True,
+                exclusive=True,
                 description=f"aftertrace-{cmd}",
             )
         else:
@@ -346,11 +358,18 @@ class AfterTraceApp(App):
             width = max(40, self.screen.size.width - 8)
         except Exception:
             width = 96
-        tconsole = Console(file=TUISink(self, log), force_terminal=True,
-                           color_system="truecolor", width=width, legacy_windows=False)
+        tconsole = Console(
+            file=TUISink(self, log),
+            force_terminal=True,
+            color_system="truecolor",
+            width=width,
+            legacy_windows=False,
+        )
         try:
             if cmd == "check":
-                tconsole.print("[bold]AFTERTRACE config check[/bold] (presence only, values never printed)")
+                tconsole.print(
+                    "[bold]AFTERTRACE config check[/bold] (presence only, values never printed)"
+                )
                 for name, present in [
                     ("QDRANT_URL", bool(settings.qdrant_url)),
                     ("QDRANT_API_KEY", bool(settings.qdrant_api_key)),
@@ -368,15 +387,23 @@ class AfterTraceApp(App):
             if cmd == "demo":
                 from .__main__ import cmd_demo as _demo
 
-                code = _demo(settings, auto_yes=auto_yes, force_local=self._force_local,
-                             out=tconsole, approver=self._make_approver())
+                code = _demo(
+                    settings,
+                    auto_yes=auto_yes,
+                    force_local=self._force_local,
+                    out=tconsole,
+                    approver=self._make_approver(),
+                )
                 self.call_from_thread(self._write_line, f"[demo exit code {code}]")
                 return
             if cmd == "reset":
                 import os as _os
 
-                for path in [settings.sqlite_path, settings.sqlite_path + "-wal",
-                             settings.sqlite_path + "-shm"]:
+                for path in [
+                    settings.sqlite_path,
+                    settings.sqlite_path + "-wal",
+                    settings.sqlite_path + "-shm",
+                ]:
                     try:
                         if _os.path.exists(path):
                             _os.remove(path)
@@ -389,11 +416,22 @@ class AfterTraceApp(App):
                         _os.remove(fb)
                 except Exception:
                     pass
-                self.call_from_thread(self._write_line, "reset done. Run /scenario1 -> /scenario2 -> /scenario3.")
+                self.call_from_thread(
+                    self._write_line, "reset done. Run /scenario1 -> /scenario2 -> /scenario3."
+                )
                 return
-            runners = {"scenario1": run_scenario1, "scenario2": run_scenario2, "scenario3": run_scenario3}
-            code = runners[cmd](settings, tconsole, auto_yes=auto_yes,
-                                force_local=self._force_local, approver=self._make_approver())
+            runners = {
+                "scenario1": run_scenario1,
+                "scenario2": run_scenario2,
+                "scenario3": run_scenario3,
+            }
+            code = runners[cmd](
+                settings,
+                tconsole,
+                auto_yes=auto_yes,
+                force_local=self._force_local,
+                approver=self._make_approver(),
+            )
             self.call_from_thread(self._write_line, f"[{cmd} exit code {code}]")
         except Exception as e:
             self.call_from_thread(self._write_line, f"[{cmd} failed: {e}]")
@@ -427,7 +465,9 @@ class AfterTraceApp(App):
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
-    p = argparse.ArgumentParser(prog="aftertrace-tui", description="Interactive AFTERTRACE terminal UI.")
+    p = argparse.ArgumentParser(
+        prog="aftertrace-tui", description="Interactive AFTERTRACE terminal UI."
+    )
     p.add_argument("--local", action="store_true", help="Force local simulation modes.")
     args = p.parse_args(argv)
     AfterTraceApp(force_local=args.local).run()
@@ -455,16 +495,26 @@ def layout_report() -> int:
         app = AfterTraceApp(force_local=True)
         async with app.run_test(size=(cols, rows)) as pilot:
             await pilot.pause(0.5)
-            for sel in ("#transcript", "#center", "#logo", "#prompt-box",
-                        "#prompt-input", "#statusline", "#hints", "#tips", "#bottombar"):
+            for sel in (
+                "#transcript",
+                "#center",
+                "#logo",
+                "#prompt-box",
+                "#prompt-input",
+                "#statusline",
+                "#hints",
+                "#tips",
+                "#bottombar",
+            ):
                 try:
                     print(sel, app.query_one(sel).region)
                 except Exception as e:
                     print(sel, "ERR", type(e).__name__)
 
     try:
-        rev = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                             capture_output=True, text=True, timeout=15).stdout.strip()
+        rev = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=15
+        ).stdout.strip()
         print("commit=" + (rev or "unknown"))
     except Exception:
         print("commit=unknown")

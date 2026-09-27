@@ -1,4 +1,5 @@
 """Config: env-only credentials, constants. Never hardcode secrets."""
+
 from __future__ import annotations
 
 import os

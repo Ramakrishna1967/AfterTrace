@@ -1,4 +1,5 @@
 """SQLite authority — migrations, transactions, repositories (spec p7-8)."""
+
 from __future__ import annotations
 
 import json
@@ -6,11 +7,11 @@ import pathlib
 import sqlite3
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class Database:
@@ -54,10 +55,13 @@ class Database:
             raise
 
     # -- manifests --
-    def insert_manifest(self, conn, digest, project_id, corpus_id, environment, revision, body_json):
+    def insert_manifest(
+        self, conn, digest, project_id, corpus_id, environment, revision, body_json
+    ):
         now = _utcnow()
         conn.execute(
-            "INSERT OR IGNORE INTO manifests(digest,project_id,corpus_id,environment,revision,body_json,source_verified_at,created_at)"
+            "INSERT OR IGNORE INTO manifests(digest,project_id,corpus_id,"
+            "environment,revision,body_json,source_verified_at,created_at)"
             " VALUES(?,?,?,?,?,?,?,?)",
             (digest, project_id, corpus_id, environment, revision, body_json, now, now),
         )
@@ -74,23 +78,52 @@ class Database:
         )
         return cur.fetchone()
 
-    def upsert_route(self, conn, project_id, corpus_id, environment, alias_name,
-                     collection_name, manifest_digest, generation=1, cache_epoch=1,
-                     mode="serving", fence=1):
+    def upsert_route(
+        self,
+        conn,
+        project_id,
+        corpus_id,
+        environment,
+        alias_name,
+        collection_name,
+        manifest_digest,
+        generation=1,
+        cache_epoch=1,
+        mode="serving",
+        fence=1,
+    ):
         conn.execute(
-            "INSERT INTO routes(project_id,corpus_id,environment,alias_name,collection_name,manifest_digest,generation,cache_epoch,mode,fence)"
+            "INSERT INTO routes(project_id,corpus_id,environment,alias_name,"
+            "collection_name,manifest_digest,generation,cache_epoch,mode,fence)"
             " VALUES(?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(project_id,corpus_id,environment) DO UPDATE SET"
             " alias_name=excluded.alias_name, collection_name=excluded.collection_name,"
             " manifest_digest=excluded.manifest_digest, generation=excluded.generation,"
             " cache_epoch=excluded.cache_epoch, mode=excluded.mode, fence=excluded.fence",
-            (project_id, corpus_id, environment, alias_name, collection_name,
-             manifest_digest, generation, cache_epoch, mode, fence),
+            (
+                project_id,
+                corpus_id,
+                environment,
+                alias_name,
+                collection_name,
+                manifest_digest,
+                generation,
+                cache_epoch,
+                mode,
+                fence,
+            ),
         )
 
     # -- incidents --
-    def transition_incident(self, conn, incident_id: str, expected_state: str,
-                            expected_version: int, new_state: str, terminal: int = 0) -> bool:
+    def transition_incident(
+        self,
+        conn,
+        incident_id: str,
+        expected_state: str,
+        expected_version: int,
+        new_state: str,
+        terminal: int = 0,
+    ) -> bool:
         """CAS state transition: requires one changed row + event appended by caller."""
         cur = conn.execute(
             "UPDATE incidents SET state=?, state_version=state_version+1, terminal=?, updated_at=?"
@@ -110,7 +143,8 @@ class Database:
         # Cap replay batches (spec p23); never send secrets — callers redact.
         limit = max(1, min(int(limit), 200))
         cur = conn.execute(
-            "SELECT seq, kind, body_json, created_at FROM events WHERE incident_id=? AND seq>? ORDER BY seq ASC LIMIT ?",
+            "SELECT seq, kind, body_json, created_at FROM events"
+            " WHERE incident_id=? AND seq>? ORDER BY seq ASC LIMIT ?",
             (incident_id, since_seq, limit),
         )
         return list(cur.fetchall())
@@ -126,7 +160,8 @@ class Database:
 
     def active_approval_for_plan(self, conn, plan_digest: str):
         cur = conn.execute(
-            "SELECT * FROM approvals WHERE plan_digest=? AND state='active' ORDER BY created_at DESC LIMIT 1",
+            "SELECT * FROM approvals WHERE plan_digest=? AND state='active'"
+            " ORDER BY created_at DESC LIMIT 1",
             (plan_digest,),
         )
         return cur.fetchone()
@@ -161,7 +196,8 @@ class Database:
 
     def unresolved_operations(self, conn, incident_id: str):
         cur = conn.execute(
-            "SELECT * FROM operations WHERE incident_id=? AND status IN ('prepared','dispatched','unknown')",
+            "SELECT * FROM operations WHERE incident_id=?"
+            " AND status IN ('prepared','dispatched','unknown')",
             (incident_id,),
         )
         return list(cur.fetchall())
@@ -182,7 +218,8 @@ class Database:
                 raise ValueError("no route for epoch bump")
             r = dict(row)
             conn.execute(
-                "UPDATE routes SET cache_epoch=cache_epoch+1 WHERE project_id=? AND corpus_id=? AND environment=?",
+                "UPDATE routes SET cache_epoch=cache_epoch+1"
+                " WHERE project_id=? AND corpus_id=? AND environment=?",
                 (project_id, corpus_id, environment),
             )
             updated = dict(self.get_route(conn, project_id, corpus_id, environment))
@@ -197,12 +234,20 @@ class Database:
         )
         return list(cur.fetchall())
 
-    def outbox_update(self, conn, event_id: str, state: str, attempts: int,
-                      next_attempt_at: str, last_error: str | None = None):
+    def outbox_update(
+        self,
+        conn,
+        event_id: str,
+        state: str,
+        attempts: int,
+        next_attempt_at: str,
+        last_error: str | None = None,
+    ):
         if state not in ("pending", "submitted", "completed", "retry", "dead"):
             raise ValueError(f"invalid outbox state {state}")
         conn.execute(
-            "UPDATE memory_outbox SET state=?, attempts=?, next_attempt_at=?, last_error=? WHERE event_id=?",
+            "UPDATE memory_outbox SET state=?, attempts=?,"
+            " next_attempt_at=?, last_error=? WHERE event_id=?",
             (state, attempts, next_attempt_at, last_error, event_id),
         )
 

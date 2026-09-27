@@ -1,4 +1,5 @@
 """Fake document corpora. 3-5 docs each, two revisions A (old) and B (intended)."""
+
 from __future__ import annotations
 
 import hashlib
@@ -34,9 +35,21 @@ def corpus_s1() -> dict:
     return build_corpus(
         "sdk-docs-s1",
         [
-            ("authentication", "Auth v1: API key in query param.", "Auth v2: API key in api-key header."),
-            ("billing", "Billing v1: monthly invoices.", "Billing v2: usage-based metered billing."),
-            ("search", "Search v1: keyword only.", "Search v2: hybrid semantic+keyword with rerank."),
+            (
+                "authentication",
+                "Auth v1: API key in query param.",
+                "Auth v2: API key in api-key header.",
+            ),
+            (
+                "billing",
+                "Billing v1: monthly invoices.",
+                "Billing v2: usage-based metered billing.",
+            ),
+            (
+                "search",
+                "Search v1: keyword only.",
+                "Search v2: hybrid semantic+keyword with rerank.",
+            ),
             ("webhooks", "Webhooks v1: no retries.", "Webhooks v2: signed retries with backoff."),
         ],
     )
@@ -49,7 +62,11 @@ def corpus_s2() -> dict:
         [
             ("refunds", "Refunds v1: manual review.", "Refunds v2: instant auto-refund under $50."),
             ("payouts", "Payouts v1: weekly batch.", "Payouts v2: daily instant payouts."),
-            ("disputes", "Disputes v1: email support.", "Disputes v2: in-dashboard evidence upload."),
+            (
+                "disputes",
+                "Disputes v1: email support.",
+                "Disputes v2: in-dashboard evidence upload.",
+            ),
             ("ledger", "Ledger v1: CSV export.", "Ledger v2: real-time ledger API."),
             ("kyc", "KYC v1: manual docs.", "KYC v2: automated verification."),
         ],
@@ -61,9 +78,21 @@ def corpus_s3() -> dict:
     return build_corpus(
         "sdk-docs-s3",
         [
-            ("authentication", "Auth v1: API key in query param.", "Auth v2: API key in api-key header."),
-            ("billing", "Billing v1: monthly invoices.", "Billing v2: usage-based metered billing."),
-            ("search", "Search v1: keyword only.", "Search v2: hybrid semantic+keyword with rerank."),
+            (
+                "authentication",
+                "Auth v1: API key in query param.",
+                "Auth v2: API key in api-key header.",
+            ),
+            (
+                "billing",
+                "Billing v1: monthly invoices.",
+                "Billing v2: usage-based metered billing.",
+            ),
+            (
+                "search",
+                "Search v1: keyword only.",
+                "Search v2: hybrid semantic+keyword with rerank.",
+            ),
         ],
     )
 

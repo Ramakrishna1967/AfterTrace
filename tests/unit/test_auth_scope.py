@@ -2,6 +2,7 @@
 
 Run: python -m pytest tests/unit/test_auth_scope.py -q
 """
+
 import json
 
 import pytest
@@ -32,23 +33,48 @@ def _manifest_body(project="sample"):
     pid = "6772ecde-fd54-4c5d-9f2d-b51b00361032"
     vec = deterministic_vector(t, 4)
     return {
-        "project_id": project, "corpus_id": "sdk-docs", "environment": "staging",
-        "revision": "B", "source_snapshot_sha256": h, "pipeline_fingerprint": "p",
-        "embedding_model_revision": "e", "vector_size": 4, "distance": "Cosine",
+        "project_id": project,
+        "corpus_id": "sdk-docs",
+        "environment": "staging",
+        "revision": "B",
+        "source_snapshot_sha256": h,
+        "pipeline_fingerprint": "p",
+        "embedding_model_revision": "e",
+        "vector_size": 4,
+        "distance": "Cosine",
         "chunker_version": "c",
-        "chunks": [{"point_id": pid, "document_id": "authentication", "chunk_id": "auth-0001",
-                    "revision": "B", "content_sha256": h, "source_blob_sha256": h}],
-        "canaries": [{"query_id": "q1", "query_vector": vec, "expected_point_id": pid,
-                      "expected_revision": "B", "expected_content_sha256": h, "top_k": 3}],
+        "chunks": [
+            {
+                "point_id": pid,
+                "document_id": "authentication",
+                "chunk_id": "auth-0001",
+                "revision": "B",
+                "content_sha256": h,
+                "source_blob_sha256": h,
+            }
+        ],
+        "canaries": [
+            {
+                "query_id": "q1",
+                "query_vector": vec,
+                "expected_point_id": pid,
+                "expected_revision": "B",
+                "expected_content_sha256": h,
+                "top_k": 3,
+            }
+        ],
     }
 
 
 def _incident(client, project="sample"):
-    d = client.post("/v1/manifests", json=_manifest_body(project),
-                    headers={"x-project": project}).json()["digest"]
-    r = client.post("/v1/incidents",
-                    json={"corpus_id": "sdk-docs", "desired_manifest_digest": d},
-                    headers={"x-project": project, "Idempotency-Key": f"k-{project}"})
+    d = client.post(
+        "/v1/manifests", json=_manifest_body(project), headers={"x-project": project}
+    ).json()["digest"]
+    r = client.post(
+        "/v1/incidents",
+        json={"corpus_id": "sdk-docs", "desired_manifest_digest": d},
+        headers={"x-project": project, "Idempotency-Key": f"k-{project}"},
+    )
     assert r.status_code == 202, r.text
     return r.json()["incident_id"]
 
@@ -61,11 +87,17 @@ def test_manifest_sample_wildcard_closed(client):
 
 def test_diagnostics_cross_project_blocked(client):
     iid = _incident(client, "sample")
-    r = client.post(f"/v1/incidents/{iid}/diagnostics", json={"action": "inspect_alias"},
-                    headers={"x-project": "other"})
+    r = client.post(
+        f"/v1/incidents/{iid}/diagnostics",
+        json={"action": "inspect_alias"},
+        headers={"x-project": "other"},
+    )
     assert r.status_code == 403, r.text
-    r = client.post(f"/v1/incidents/{iid}/diagnostics", json={"action": "inspect_alias"},
-                    headers={"x-project": "sample"})
+    r = client.post(
+        f"/v1/incidents/{iid}/diagnostics",
+        json={"action": "inspect_alias"},
+        headers={"x-project": "sample"},
+    )
     assert r.status_code == 200, r.text
 
 
@@ -82,8 +114,11 @@ def test_operator_cannot_approve(client):
     iid = _incident(client, "sample")
     r = client.post(f"/v1/incidents/{iid}/approvals", json={"plan_digest": "deadbeef"})
     assert r.status_code == 403, r.text  # default role is operator
-    r = client.post(f"/v1/incidents/{iid}/approvals", json={"plan_digest": "deadbeef"},
-                    headers={"x-role": "approver"})
+    r = client.post(
+        f"/v1/incidents/{iid}/approvals",
+        json={"plan_digest": "deadbeef"},
+        headers={"x-role": "approver"},
+    )
     assert r.status_code == 409, r.text  # role passes, plan correctly reported stale
 
 

@@ -2,11 +2,9 @@
 
 Run: python -m pytest tests/test_cli.py -q
 """
+
 import math
 import os
-import sqlite3
-
-import pytest
 
 from cli import fixtures, sqlite_log
 from cli.agent import gateway_query, verify_target_collection
@@ -42,9 +40,16 @@ def test_verify_target_exact(tmp_path):
     store = QdrantStore(s, force_local=True)
     corpus = fixtures.corpus_s1()
     pts = [
-        {"id": c["point_id"], "vector": c["vec_b"],
-         "payload": {"document_id": c["doc_id"], "revision": "B",
-                     "content_sha256": c["sha_b"], "text": "x"}}
+        {
+            "id": c["point_id"],
+            "vector": c["vec_b"],
+            "payload": {
+                "document_id": c["doc_id"],
+                "revision": "B",
+                "content_sha256": c["sha_b"],
+                "text": "x",
+            },
+        }
         for c in corpus["chunks"]
     ]
     store.recreate_collection("col_b")
@@ -58,9 +63,16 @@ def test_verify_target_rejects_wrong_revision(tmp_path):
     store = QdrantStore(s, force_local=True)
     corpus = fixtures.corpus_s1()
     pts = [
-        {"id": c["point_id"], "vector": c["vec_a"],
-         "payload": {"document_id": c["doc_id"], "revision": "A",
-                     "content_sha256": c["sha_a"], "text": "x"}}
+        {
+            "id": c["point_id"],
+            "vector": c["vec_a"],
+            "payload": {
+                "document_id": c["doc_id"],
+                "revision": "A",
+                "content_sha256": c["sha_a"],
+                "text": "x",
+            },
+        }
         for c in corpus["chunks"]
     ]
     store.recreate_collection("col_wrong")
@@ -88,12 +100,32 @@ def test_stale_cache_masks_correct_alias(tmp_path):
     s = _local_settings(tmp_path)
     store = QdrantStore(s, force_local=True)
     corpus = fixtures.corpus_s3()
-    pts_a = [{"id": c["point_id"], "vector": c["vec_a"],
-              "payload": {"document_id": c["doc_id"], "revision": "A",
-                          "content_sha256": c["sha_a"], "text": "x"}} for c in corpus["chunks"]]
-    pts_b = [{"id": c["point_id"], "vector": c["vec_b"],
-              "payload": {"document_id": c["doc_id"], "revision": "B",
-                          "content_sha256": c["sha_b"], "text": "x"}} for c in corpus["chunks"]]
+    pts_a = [
+        {
+            "id": c["point_id"],
+            "vector": c["vec_a"],
+            "payload": {
+                "document_id": c["doc_id"],
+                "revision": "A",
+                "content_sha256": c["sha_a"],
+                "text": "x",
+            },
+        }
+        for c in corpus["chunks"]
+    ]
+    pts_b = [
+        {
+            "id": c["point_id"],
+            "vector": c["vec_b"],
+            "payload": {
+                "document_id": c["doc_id"],
+                "revision": "B",
+                "content_sha256": c["sha_b"],
+                "text": "x",
+            },
+        }
+        for c in corpus["chunks"]
+    ]
     store.recreate_collection("a3")
     store.upsert("a3", pts_a)
     store.recreate_collection("b3")

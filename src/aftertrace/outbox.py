@@ -1,27 +1,36 @@
 """Reliable memory delivery — transactional outbox (spec p22)."""
+
 from __future__ import annotations
 
 import hashlib
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
-def build_outbox_row(incident_id: str, event_id: str, bank_id: str, summary: str,
-                     scope_tags: list[str], string_metadata: dict) -> dict:
+def build_outbox_row(
+    incident_id: str,
+    event_id: str,
+    bank_id: str,
+    summary: str,
+    scope_tags: list[str],
+    string_metadata: dict,
+) -> dict:
     payload = {
-        "items": [{
-            "content": summary,
-            "document_id": f"aftertrace-{incident_id}-{event_id}",
-            "timestamp": _utcnow(),
-            "context": "AFTERTRACE terminal incident",
-            "tags": scope_tags,
-            "metadata": string_metadata,
-        }],
+        "items": [
+            {
+                "content": summary,
+                "document_id": f"aftertrace-{incident_id}-{event_id}",
+                "timestamp": _utcnow(),
+                "context": "AFTERTRACE terminal incident",
+                "tags": scope_tags,
+                "metadata": string_metadata,
+            }
+        ],
         "async": True,
     }
     payload_json = json.dumps(payload, sort_keys=True)
@@ -43,18 +52,20 @@ def build_outbox_row(incident_id: str, event_id: str, bank_id: str, summary: str
 async def submit_memory(h, row: dict) -> dict:
     """h is an authenticated HTTPX client for the configured API base URL."""
     payload = {
-        "items": [{
-            "content": json.loads(row["payload_json"])["items"][0]["content"],
-            "document_id": row["document_id"],
-            "timestamp": json.loads(row["payload_json"])["items"][0]["timestamp"],
-            "context": "AFTERTRACE terminal incident",
-            "tags": json.loads(row["payload_json"])["items"][0]["tags"],
-            "metadata": json.loads(row["payload_json"])["items"][0]["metadata"],
-        }],
+        "items": [
+            {
+                "content": json.loads(row["payload_json"])["items"][0]["content"],
+                "document_id": row["document_id"],
+                "timestamp": json.loads(row["payload_json"])["items"][0]["timestamp"],
+                "context": "AFTERTRACE terminal incident",
+                "tags": json.loads(row["payload_json"])["items"][0]["tags"],
+                "metadata": json.loads(row["payload_json"])["items"][0]["metadata"],
+            }
+        ],
         "async": True,
         "operation_id": row["operation_id"],
     }
-    response = await h.post(f'/v1/default/banks/{row["bank_id"]}/memories', json=payload)
+    response = await h.post(f"/v1/default/banks/{row['bank_id']}/memories", json=payload)
     response.raise_for_status()
     return response.json()
 
@@ -69,17 +80,28 @@ def backoff(attempts: int, jitter_s: float = 1.0) -> str:
     """Capped exponential backoff with jitter (p22). Never generate a new UUID on retry."""
     import random
 
-    base = min(2 ** attempts * 5, 300)
+    base = min(2**attempts * 5, 300)
     delay = base + random.uniform(0, jitter_s)
-    dt = datetime.now(timezone.utc) + timedelta(seconds=delay)
+    dt = datetime.now(UTC) + timedelta(seconds=delay)
     return dt.isoformat()
 
 
 def is_retryable(exc: Exception) -> bool:
     msg = str(exc).lower()
     # Schema/auth/operation-ID conflicts -> dead-letter, never silent new UUID.
-    if any(k in msg for k in ("401", "403", "422", "operation-id conflict", "operation_id conflict",
-                              "unauthorized", "forbidden", "validation")):
+    if any(
+        k in msg
+        for k in (
+            "401",
+            "403",
+            "422",
+            "operation-id conflict",
+            "operation_id conflict",
+            "unauthorized",
+            "forbidden",
+            "validation",
+        )
+    ):
         return False
     return True
 
@@ -102,20 +124,31 @@ async def deliver_once(db, h, row: dict) -> str:
         if sec.scan_for_secrets(content):
             content = sec.redact(content)
         if attempts == 1:
-            db.outbox_update(conn, row["event_id"], "pending", attempts - 1,
-                             _utcnow(), None)
+            db.outbox_update(conn, row["event_id"], "pending", attempts - 1, _utcnow(), None)
         # 2. submitted: identical request, same operation UUID
         try:
             await submit_memory(h, row)
         except Exception as exc:
             if not is_retryable(exc):
                 with db.tx_immediate(conn):
-                    db.outbox_update(conn, row["event_id"], "dead", attempts,
-                                     _utcnow(), sec.redact(str(exc))[:500])
+                    db.outbox_update(
+                        conn,
+                        row["event_id"],
+                        "dead",
+                        attempts,
+                        _utcnow(),
+                        sec.redact(str(exc))[:500],
+                    )
                 return "dead"
             with db.tx_immediate(conn):
-                db.outbox_update(conn, row["event_id"], "retry", attempts,
-                                 backoff(attempts), sec.redact(str(exc))[:500])
+                db.outbox_update(
+                    conn,
+                    row["event_id"],
+                    "retry",
+                    attempts,
+                    backoff(attempts),
+                    sec.redact(str(exc))[:500],
+                )
             return "retry"
         with db.tx_immediate(conn):
             db.outbox_update(conn, row["event_id"], "submitted", attempts, _utcnow(), None)
@@ -124,8 +157,14 @@ async def deliver_once(db, h, row: dict) -> str:
             op = await memory_operation(h, row["bank_id"], row["operation_id"])
         except Exception as exc:
             with db.tx_immediate(conn):
-                db.outbox_update(conn, row["event_id"], "retry", attempts,
-                                 backoff(attempts), sec.redact(str(exc))[:500])
+                db.outbox_update(
+                    conn,
+                    row["event_id"],
+                    "retry",
+                    attempts,
+                    backoff(attempts),
+                    sec.redact(str(exc))[:500],
+                )
             return "retry"
         status = str(op.get("status", op.get("state", ""))).lower()
         if status in ("completed", "succeeded", "done"):
@@ -135,12 +174,17 @@ async def deliver_once(db, h, row: dict) -> str:
         if status in ("failed", "cancelled", "canceled"):
             # Terminal-failed: resubmitting same op ID is NOT a fresh job; dead-letter + alert.
             with db.tx_immediate(conn):
-                db.outbox_update(conn, row["event_id"], "dead", attempts, _utcnow(),
-                                 f"operation terminal: {status}")
+                db.outbox_update(
+                    conn,
+                    row["event_id"],
+                    "dead",
+                    attempts,
+                    _utcnow(),
+                    f"operation terminal: {status}",
+                )
             return "dead"
         with db.tx_immediate(conn):
-            db.outbox_update(conn, row["event_id"], "submitted", attempts,
-                             backoff(attempts), None)
+            db.outbox_update(conn, row["event_id"], "submitted", attempts, backoff(attempts), None)
         return "submitted"
     finally:
         conn.close()
@@ -173,5 +217,6 @@ def correction_event(supersedes_document_id: str, new_summary: str) -> dict:
     return {
         "supersedes": supersedes_document_id,
         "sanitized_summary": sec.sanitize_summary(
-            f"CORRECTION supersedes {supersedes_document_id}: {new_summary}"),
+            f"CORRECTION supersedes {supersedes_document_id}: {new_summary}"
+        ),
     }

@@ -1,4 +1,5 @@
-"""Agent core: detect -> recall -> diagnose (verify-before-act) -> propose -> approve -> fix -> verify -> retain."""
+"""Agent core: detect -> recall -> diagnose -> propose -> approve -> fix."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -15,7 +16,11 @@ if TYPE_CHECKING:
 
 
 def gateway_query(
-    con: sqlite3.Connection, store: QdrantStore, alias: str, cache_key: str, query_vector: list[float]
+    con: sqlite3.Connection,
+    store: QdrantStore,
+    alias: str,
+    cache_key: str,
+    query_vector: list[float],
 ) -> dict:
     """Real query path with stale-cache simulation layered on top.
 
@@ -43,7 +48,9 @@ def gateway_query(
     return hit
 
 
-def verify_target_collection(store: QdrantStore, collection: str, corpus_data: dict) -> tuple[bool, list[str]]:
+def verify_target_collection(
+    store: QdrantStore, collection: str, corpus_data: dict
+) -> tuple[bool, list[str]]:
     """Exact check: identity set + revision + sha match expected B."""
     errors: list[str] = []
     try:
@@ -70,7 +77,9 @@ def verify_target_collection(store: QdrantStore, collection: str, corpus_data: d
 def ask_approval(console: Console, proposal: str, auto_yes: bool, approver=None) -> bool:
     """Approval gate. `approver` is an optional callable(proposal)->bool used by
     non-stdio frontends (e.g. the Textual TUI modal). Defaults preserve CLI behavior."""
-    console.print(Panel(proposal, title="Proposed repair (requires approval)", border_style="yellow"))
+    console.print(
+        Panel(proposal, title="Proposed repair (requires approval)", border_style="yellow")
+    )
     if auto_yes:
         console.print("[yellow]--yes supplied: auto-approving.[/yellow]")
         return True

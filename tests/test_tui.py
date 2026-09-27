@@ -2,6 +2,7 @@
 
 Run: python -m pytest tests/test_tui.py -q
 """
+
 import asyncio
 
 from cli.tui import AfterTraceApp, parse_command
@@ -53,6 +54,7 @@ async def test_tui_check_help_unknown_quit():
         assert not app._busy
         _ = inp
 
+
 async def test_tui_palette_open_close():
     app = AfterTraceApp(force_local=True)
     async with app.run_test() as pilot:
@@ -74,7 +76,6 @@ def test_strip_ansi():
 
 
 async def test_tui_captured_has_no_ansi():
-    from textual.widgets import Input
 
     app = AfterTraceApp(force_local=True)
     async with app.run_test() as pilot:

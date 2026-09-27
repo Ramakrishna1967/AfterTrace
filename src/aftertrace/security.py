@@ -5,6 +5,7 @@ cross-project leakage guards, arbitrary network/file denial, secret
 redaction + scanning, duplicate/destructive-write guards, memory
 provenance, loop/spend budgets, approval auth.
 """
+
 from __future__ import annotations
 
 import re
@@ -20,10 +21,26 @@ SECRET_PATTERNS = [
 ]
 
 ALLOWLIST_METADATA_KEYS = {
-    "incident_id", "event_id", "evidence_digest", "outcome", "pipeline",
-    "project", "corpus", "environment", "revision", "manifest_digest",
-    "alias", "collection", "generation", "cache_epoch", "fence",
-    "route", "canary_id", "cache_hit", "tool", "status",
+    "incident_id",
+    "event_id",
+    "evidence_digest",
+    "outcome",
+    "pipeline",
+    "project",
+    "corpus",
+    "environment",
+    "revision",
+    "manifest_digest",
+    "alias",
+    "collection",
+    "generation",
+    "cache_epoch",
+    "fence",
+    "route",
+    "canary_id",
+    "cache_hit",
+    "tool",
+    "status",
 }
 
 
@@ -73,9 +90,15 @@ def redact_json(value, max_str: int = 2000):
 class Budget:
     """Unbounded loop/tool/spend guard (spec p25 defaults)."""
 
-    def __init__(self, max_dispatches: int = 8, wall_clock_s: float = 120.0,
-                 response_limit_bytes: int = 131072, recall_tokens: int = 1500,
-                 approval_validity_s: int = 300, scan_limit: int = 10000):
+    def __init__(
+        self,
+        max_dispatches: int = 8,
+        wall_clock_s: float = 120.0,
+        response_limit_bytes: int = 131072,
+        recall_tokens: int = 1500,
+        approval_validity_s: int = 300,
+        scan_limit: int = 10000,
+    ):
         self.max_dispatches = max_dispatches
         self.wall_clock_s = wall_clock_s
         self.response_limit_bytes = response_limit_bytes
@@ -88,7 +111,9 @@ class Budget:
 
     def check_dispatch(self):
         if self.dispatches >= self.max_dispatches:
-            raise RuntimeError("diagnostic tool budget exhausted; escalate with observations retained")
+            raise RuntimeError(
+                "diagnostic tool budget exhausted; escalate with observations retained"
+            )
         if (time.monotonic() - self.start) > self.wall_clock_s:
             raise RuntimeError("diagnostic wall clock exhausted; stop new model/tool requests")
         self.dispatches += 1

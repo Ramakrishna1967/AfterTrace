@@ -1,4 +1,5 @@
 """Structured reasoning — validate reflection before dispatch (spec p16)."""
+
 from __future__ import annotations
 
 import json
@@ -67,7 +68,14 @@ async def choose_step(memory, observations: list[dict], allowed_fact_ids: set[st
 def deterministic_fallback(observations: list[dict]) -> NextStep:
     """No-memory / reflect-failure path: order fixed diagnostic sequence."""
     seen_tools = {o.get("tool") for o in observations if isinstance(o, dict)}
-    order = ["inspect_alias", "inspect_route", "verify_target", "probe_gateway", "inspect_cache", "verify_source"]
+    order = [
+        "inspect_alias",
+        "inspect_route",
+        "verify_target",
+        "probe_gateway",
+        "inspect_cache",
+        "verify_source",
+    ]
     for tool in order:
         if tool not in seen_tools:
             hypothesis = "unknown"

@@ -1,4 +1,5 @@
 """Three scenarios. Each is runnable as a separate fresh process."""
+
 from __future__ import annotations
 
 import datetime
@@ -22,7 +23,9 @@ def _collections_for(scenario: str) -> tuple[str, str, str]:
     )
 
 
-def _ingest_corpus(store: QdrantStore, corpus_data: dict, col_a: str, col_b: str, console: Console) -> None:
+def _ingest_corpus(
+    store: QdrantStore, corpus_data: dict, col_a: str, col_b: str, console: Console
+) -> None:
     pts_a, pts_b = [], []
     for c in corpus_data["chunks"]:
         pts_a.append(
@@ -57,7 +60,9 @@ def _ingest_corpus(store: QdrantStore, corpus_data: dict, col_a: str, col_b: str
     console.print(f"[dim]ingested {len(pts_b)} pts -> {col_b} (rev B fixtures)[/dim]")
 
 
-def _set_live_alias(con: sqlite3.Connection, store: QdrantStore, alias: str, collection: str) -> None:
+def _set_live_alias(
+    con: sqlite3.Connection, store: QdrantStore, alias: str, collection: str
+) -> None:
     sqlite_log.set_alias(con, alias, collection)
     try:
         store.ensure_alias(alias, collection)
@@ -87,12 +92,23 @@ def _recall_step(console: Console, memory: MemoryStore, query: str) -> list:
 
 
 def _retain_incident(
-    console: Console, memory: MemoryStore, con: sqlite3.Connection, incident_id: str, content: str, document_id: str, metadata: dict
+    console: Console,
+    memory: MemoryStore,
+    con: sqlite3.Connection,
+    incident_id: str,
+    content: str,
+    document_id: str,
+    metadata: dict,
 ) -> None:
     console.print(f"[cyan]> retaining incident to {memory.mode_label}...[/cyan]")
     try:
         memory.ensure_bank()
-        memory.retain(content=content, document_id=document_id, context="AFTERTRACE verified operational incident", metadata=metadata)
+        memory.retain(
+            content=content,
+            document_id=document_id,
+            context="AFTERTRACE verified operational incident",
+            metadata=metadata,
+        )
         console.print("[green]> retained.[/green]")
         sqlite_log.log_event(con, incident_id, "memory.retained", {"document_id": document_id})
     except Exception as e:
@@ -101,8 +117,18 @@ def _retain_incident(
 
 
 # ---------------- Scenario 1: cold incident ----------------
-def run_scenario1(settings: Settings, console: Console, auto_yes: bool = False, force_local: bool = False, approver=None) -> int:
-    console.print(Panel("SCENARIO 1 -- cold incident: alias drift (no prior memory)", border_style="bold blue"))
+def run_scenario1(
+    settings: Settings,
+    console: Console,
+    auto_yes: bool = False,
+    force_local: bool = False,
+    approver=None,
+) -> int:
+    console.print(
+        Panel(
+            "SCENARIO 1 -- cold incident: alias drift (no prior memory)", border_style="bold blue"
+        )
+    )
     con = sqlite_log.connect(settings.sqlite_path)
     store = QdrantStore(settings, console, force_local=force_local)
     memory = MemoryStore(settings, console, force_local=force_local)
@@ -124,7 +150,10 @@ def run_scenario1(settings: Settings, console: Console, auto_yes: bool = False, 
 
     # DETECT
     first = gateway_query(con, store, alias, cache_key, list(canary["query_vector"]))
-    console.print(f"> query via alias {alias}: got rev [bold]{first['revision']}[/bold] point {first['point_id']} ({first['via']})")
+    console.print(
+        f"> query via alias {alias}: got rev [bold]{first['revision']}[/bold]"
+        f" point {first['point_id']} ({first['via']})"
+    )
     if first["revision"] == "B" and first["point_id"] == canary["expected_point_id"]:
         console.print("[green]No failure: live already returns B. Nothing to do.[/green]")
         return 0
@@ -132,7 +161,11 @@ def run_scenario1(settings: Settings, console: Console, auto_yes: bool = False, 
     sqlite_log.log_event(con, incident_id, "detected", {"got": first, "expected_rev": "B"})
 
     # DIAGNOSE (cold: no memory fast-path expected, but still attempt recall to prove cold)
-    recalled = _recall_step(console, memory, "RAG retrieval returns old revision; new build ready but live serves stale revision")
+    recalled = _recall_step(
+        console,
+        memory,
+        "RAG retrieval returns old revision; new build ready but live serves stale revision",
+    )
     live = sqlite_log.get_alias(con, alias) or store.get_alias_target(alias)
     ok_b, errs = verify_target_collection(store, col_b, corpus)
     show_evidence_table(
@@ -143,9 +176,14 @@ def run_scenario1(settings: Settings, console: Console, auto_yes: bool = False, 
             ("live query revision", f"{first['revision']}"),
         ],
     )
-    sqlite_log.log_event(con, incident_id, "diagnosed", {"live": live, "target_ok": ok_b, "recalled": len(recalled)})
+    sqlite_log.log_event(
+        con, incident_id, "diagnosed", {"live": live, "target_ok": ok_b, "recalled": len(recalled)}
+    )
     if not ok_b:
-        console.print("[red]Target B is NOT correct; cannot propose alias promotion. Escalating (needs new build).[/red]")
+        console.print(
+            "[red]Target B is NOT correct; cannot propose alias promotion."
+            " Escalating (needs new build).[/red]"
+        )
         sqlite_log.set_state(con, incident_id, "ESCALATED")
         return 2
     if live == col_b:
@@ -153,20 +191,31 @@ def run_scenario1(settings: Settings, console: Console, auto_yes: bool = False, 
         sqlite_log.set_state(con, incident_id, "ESCALATED")
         return 2
     hypothesis = "alias_drift"
-    console.print(f"[bold]Hypothesis: {hypothesis}[/bold] -- target B verified correct while alias still targets A.")
+    console.print(
+        f"[bold]Hypothesis: {hypothesis}[/bold]"
+        " -- target B verified correct while alias still targets A."
+    )
 
     # PROPOSE + APPROVE
-    proposal = f"switch alias {alias}: {col_a} -> {col_b}\nEvidence: B exact ({store.count(col_b)} pts), live query rev A.\nPostcondition: exact B + gateway canary returns B."
+    proposal = (
+        f"switch alias {alias}: {col_a} -> {col_b}\n"
+        f"Evidence: B exact ({store.count(col_b)} pts), live query rev A.\n"
+        "Postcondition: exact B + gateway canary returns B."
+    )
     if not ask_approval(console, proposal, auto_yes, approver):
         console.print("Cancelled by operator. No writes made.")
         sqlite_log.set_state(con, incident_id, "CANCELLED")
         return 3
-    sqlite_log.log_event(con, incident_id, "approved", {"alias": alias, "before": col_a, "after": col_b})
+    sqlite_log.log_event(
+        con, incident_id, "approved", {"alias": alias, "before": col_a, "after": col_b}
+    )
 
     # APPLY (re-verify immediately before write: never let memory authorize)
     live_now = sqlite_log.get_alias(con, alias) or store.get_alias_target(alias)
     if live_now != col_a:
-        console.print(f"[red]Precondition changed (alias now {live_now}); aborting. Re-plan required.[/red]")
+        console.print(
+            f"[red]Precondition changed (alias now {live_now}); aborting. Re-plan required.[/red]"
+        )
         return 4
     res = store.switch_alias(alias, col_a, col_b)
     _set_live_alias(con, store, alias, col_b)
@@ -176,7 +225,10 @@ def run_scenario1(settings: Settings, console: Console, auto_yes: bool = False, 
     # VERIFY
     second = gateway_query(con, store, alias, cache_key, list(canary["query_vector"]))
     passed = second["revision"] == "B" and second["point_id"] == canary["expected_point_id"]
-    console.print(f"> re-query: rev [bold]{second['revision']}[/bold] ({second['via']}) -> {'[green]PASS[/green]' if passed else '[red]FAIL[/red]'}")
+    status = "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
+    console.print(
+        f"> re-query: rev [bold]{second['revision']}[/bold] ({second['via']}) -> {status}"
+    )
     if not passed:
         sqlite_log.set_state(con, incident_id, "FAILED")
         return 5
@@ -184,32 +236,60 @@ def run_scenario1(settings: Settings, console: Console, auto_yes: bool = False, 
     sqlite_log.log_event(con, incident_id, "verified", {"got": second})
 
     # RETAIN (real data only)
-    ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    ts = datetime.datetime.now(datetime.UTC).isoformat()
     content = (
-        f"AFTERTRACE incident s1 (cold). Symptom: query {canary['query_id']} expected revision B "
-        f"point {canary['expected_point_id']} but alias {alias} pointed at {col_a}, returning revision A. "
-        f"Evidence: target {col_b} passed exact inventory ({store.count(col_b)} points, revision B, sha verified); "
+        f"AFTERTRACE incident s1 (cold). Symptom: query {canary['query_id']}"
+        " expected revision B "
+        f"point {canary['expected_point_id']} but alias {alias} pointed at {col_a},"
+        " returning revision A. "
+        f"Evidence: target {col_b} passed exact inventory ({store.count(col_b)} points,"
+        " revision B, sha verified); "
         f"live alias observed {col_a}; live query returned rev A via {first['via']}. "
         f"Attempt rejected: none (cold). Action approved: switch live alias {col_a} -> {col_b}. "
         f"Outcome: post-switch gateway query returned rev B point {second['point_id']} (PASS). "
-        f"Applicability: same publication protocol; target must first be verified exact. "
-        f"Contraindication: if alias already correct or target incomplete, do NOT switch; investigate other cause. "
+        "Applicability: same publication protocol; target must first be verified exact. "
+        "Contraindication: if alias already correct or target incomplete,"
+        " do NOT switch; investigate other cause. "
         f"Collections: {col_a},{col_b}. Corpus: {corpus['corpus']}."
     )
     _retain_incident(
-        console, memory, con, incident_id, content,
+        console,
+        memory,
+        con,
+        incident_id,
+        content,
         document_id=f"aftertrace-s1-{corpus['corpus']}",
-        metadata={"incident_id": incident_id, "scenario": "s1-cold", "corpus": corpus["corpus"],
-                  "alias": alias, "before": col_a, "after": col_b, "occurred_at": ts},
+        metadata={
+            "incident_id": incident_id,
+            "scenario": "s1-cold",
+            "corpus": corpus["corpus"],
+            "alias": alias,
+            "before": col_a,
+            "after": col_b,
+            "occurred_at": ts,
+        },
     )
     memory.close()
-    console.print(Panel("SCENARIO 1 RESOLVED: alias drift fixed and verified.", border_style="green"))
+    console.print(
+        Panel("SCENARIO 1 RESOLVED: alias drift fixed and verified.", border_style="green")
+    )
     return 0
 
 
 # ---------------- Scenario 2: memory-assisted transfer ----------------
-def run_scenario2(settings: Settings, console: Console, auto_yes: bool = False, force_local: bool = False, approver=None) -> int:
-    console.print(Panel("SCENARIO 2 -- memory-assisted transfer on NEW corpus (fresh process)", border_style="bold blue"))
+def run_scenario2(
+    settings: Settings,
+    console: Console,
+    auto_yes: bool = False,
+    force_local: bool = False,
+    approver=None,
+) -> int:
+    console.print(
+        Panel(
+            "SCENARIO 2 -- memory-assisted transfer on NEW corpus (fresh process)",
+            border_style="bold blue",
+        )
+    )
     con = sqlite_log.connect(settings.sqlite_path)
     store = QdrantStore(settings, console, force_local=force_local)
     memory = MemoryStore(settings, console, force_local=force_local)
@@ -224,10 +304,14 @@ def run_scenario2(settings: Settings, console: Console, auto_yes: bool = False, 
     canary = fixtures.canary_for(corpus, corpus["chunks"][0]["doc_id"])
     cache_key = f"{alias}:{canary['query_id']}"
     sqlite_log.clear_cache(con, cache_key)
-    incident_id = sqlite_log.new_incident(con, "s2-transfer", f"query {canary['query_id']} expected B, live stale")
+    incident_id = sqlite_log.new_incident(
+        con, "s2-transfer", f"query {canary['query_id']} expected B, live stale"
+    )
 
     first = gateway_query(con, store, alias, cache_key, list(canary["query_vector"]))
-    console.print(f"> query via alias {alias}: got rev [bold]{first['revision']}[/bold] ({first['via']})")
+    console.print(
+        f"> query via alias {alias}: got rev [bold]{first['revision']}[/bold] ({first['via']})"
+    )
     if first["revision"] == "B":
         console.print("[green]No failure.[/green]")
         return 0
@@ -235,12 +319,26 @@ def run_scenario2(settings: Settings, console: Console, auto_yes: bool = False, 
     sqlite_log.log_event(con, incident_id, "detected", {"got": first, "expected_rev": "B"})
 
     # RECALL FIRST (this is the transfer proof) -- fresh process, new corpus.
-    recalled = _recall_step(console, memory, "RAG retrieval returns old document revision; new build verified correct but live serves stale revision; alias drift suspected")
+    recalled = _recall_step(
+        console,
+        memory,
+        "RAG retrieval returns old document revision; new build verified correct"
+        " but live serves stale revision; alias drift suspected",
+    )
     if recalled:
-        console.print("[bold cyan]Memory fast-path: prioritizing alias-target check first (instead of full blind scan).[/bold cyan]")
-        console.print("[dim]Note: memory only ORDERED the check -- live verification still required before any write.[/dim]")
+        console.print(
+            "[bold cyan]Memory fast-path: prioritizing alias-target check first"
+            " (instead of full blind scan).[/bold cyan]"
+        )
+        console.print(
+            "[dim]Note: memory only ORDERED the check"
+            " -- live verification still required before any write.[/dim]"
+        )
     else:
-        console.print("[yellow]No memory found -- did scenario 1 retain succeed? Continuing with live-only diagnosis.[/yellow]")
+        console.print(
+            "[yellow]No memory found -- did scenario 1 retain succeed?"
+            " Continuing with live-only diagnosis.[/yellow]"
+        )
     sqlite_log.log_event(con, incident_id, "recalled", {"n": len(recalled)})
 
     live = sqlite_log.get_alias(con, alias) or store.get_alias_target(alias)
@@ -249,7 +347,10 @@ def run_scenario2(settings: Settings, console: Console, auto_yes: bool = False, 
     show_evidence_table(
         console,
         [
-            ("recalled guidance", f"{len(recalled)} hit(s); top suggests alias-drift" if recalled else "none"),
+            (
+                "recalled guidance",
+                f"{len(recalled)} hit(s); top suggests alias-drift" if recalled else "none",
+            ),
             (f"verify target {col_b}", "PASS exact B" if ok_b else f"FAIL: {errs[:2]}"),
             (f"alias {alias}", f"{live}"),
         ],
@@ -260,7 +361,10 @@ def run_scenario2(settings: Settings, console: Console, auto_yes: bool = False, 
         return 2
     console.print("[bold]Hypothesis: alias_drift (memory-assisted, live-confirmed).[/bold]")
 
-    proposal = f"switch alias {alias}: {col_a} -> {col_b}\nEvidence: recalled s1 alias-drift + live alias={live}, B exact."
+    proposal = (
+        f"switch alias {alias}: {col_a} -> {col_b}\n"
+        f"Evidence: recalled s1 alias-drift + live alias={live}, B exact."
+    )
     if not ask_approval(console, proposal, auto_yes, approver):
         sqlite_log.set_state(con, incident_id, "CANCELLED")
         return 3
@@ -275,35 +379,63 @@ def run_scenario2(settings: Settings, console: Console, auto_yes: bool = False, 
 
     second = gateway_query(con, store, alias, cache_key, list(canary["query_vector"]))
     passed = second["revision"] == "B" and second["point_id"] == canary["expected_point_id"]
-    console.print(f"> re-query: rev [bold]{second['revision']}[/bold] -> {'[green]PASS[/green]' if passed else '[red]FAIL[/red]'}")
+    status = "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
+    console.print(f"> re-query: rev [bold]{second['revision']}[/bold] -> {status}")
     if not passed:
         sqlite_log.set_state(con, incident_id, "FAILED")
         return 5
     sqlite_log.set_state(con, incident_id, "RESOLVED")
     sqlite_log.log_event(con, incident_id, "verified", {"got": second})
 
-    ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    ts = datetime.datetime.now(datetime.UTC).isoformat()
     content = (
-        f"AFTERTRACE incident s2 (transfer). Symptom: query {canary['query_id']} on NEW corpus {corpus['corpus']} "
-        f"expected B but alias {alias} pointed at {col_a}. Evidence: recall returned prior alias-drift experience; "
+        f"AFTERTRACE incident s2 (transfer). Symptom: query {canary['query_id']}"
+        f" on NEW corpus {corpus['corpus']} "
+        f"expected B but alias {alias} pointed at {col_a}."
+        " Evidence: recall returned prior alias-drift experience; "
         f"live alias observed {col_a}; target {col_b} exact ({store.count(col_b)} pts). "
         f"Action approved: switch {col_a} -> {col_b}. Outcome: re-query rev B PASS. "
-        f"Memory sped diagnosis by prioritizing alias check; live verification still gated the write."
+        "Memory sped diagnosis by prioritizing alias check;"
+        " live verification still gated the write."
     )
     _retain_incident(
-        console, memory, con, incident_id, content,
+        console,
+        memory,
+        con,
+        incident_id,
+        content,
         document_id=f"aftertrace-s2-{corpus['corpus']}",
-        metadata={"incident_id": incident_id, "scenario": "s2-transfer", "corpus": corpus["corpus"],
-                  "alias": alias, "before": col_a, "after": col_b, "occurred_at": ts},
+        metadata={
+            "incident_id": incident_id,
+            "scenario": "s2-transfer",
+            "corpus": corpus["corpus"],
+            "alias": alias,
+            "before": col_a,
+            "after": col_b,
+            "occurred_at": ts,
+        },
     )
     memory.close()
-    console.print(Panel("SCENARIO 2 RESOLVED: memory-assisted alias fix verified.", border_style="green"))
+    console.print(
+        Panel("SCENARIO 2 RESOLVED: memory-assisted alias fix verified.", border_style="green")
+    )
     return 0
 
 
 # ---------------- Scenario 3: reject wrong recalled fix ----------------
-def run_scenario3(settings: Settings, console: Console, auto_yes: bool = False, force_local: bool = False, approver=None) -> int:
-    console.print(Panel("SCENARIO 3 -- same symptom, DIFFERENT cause: reject recalled alias fix", border_style="bold blue"))
+def run_scenario3(
+    settings: Settings,
+    console: Console,
+    auto_yes: bool = False,
+    force_local: bool = False,
+    approver=None,
+) -> int:
+    console.print(
+        Panel(
+            "SCENARIO 3 -- same symptom, DIFFERENT cause: reject recalled alias fix",
+            border_style="bold blue",
+        )
+    )
     con = sqlite_log.connect(settings.sqlite_path)
     store = QdrantStore(settings, console, force_local=force_local)
     memory = MemoryStore(settings, console, force_local=force_local)
@@ -319,22 +451,38 @@ def run_scenario3(settings: Settings, console: Console, auto_yes: bool = False, 
     cache_key = f"{alias}:{canary['query_id']}"
     stale_pid = corpus["chunks"][0]["point_id"]
     sqlite_log.set_cache(con, cache_key, "A", stale_pid, stale=1)
-    console.print(f"[yellow]FAULT INJECTED: alias {alias} -> {col_b} (CORRECT), but stale cache serves rev A for {canary['query_id']}[/yellow]")
+    console.print(
+        f"[yellow]FAULT INJECTED: alias {alias} -> {col_b} (CORRECT),"
+        f" but stale cache serves rev A for {canary['query_id']}[/yellow]"
+    )
 
-    incident_id = sqlite_log.new_incident(con, "s3-reject", f"query {canary['query_id']} expected B, got stale A")
+    incident_id = sqlite_log.new_incident(
+        con, "s3-reject", f"query {canary['query_id']} expected B, got stale A"
+    )
 
     first = gateway_query(con, store, alias, cache_key, list(canary["query_vector"]))
-    console.print(f"> query: got rev [bold]{first['revision']}[/bold] ({first['via']}) -- same surface symptom as alias drift.")
+    console.print(
+        f"> query: got rev [bold]{first['revision']}[/bold] ({first['via']})"
+        " -- same surface symptom as alias drift."
+    )
     if first["revision"] == "B":
         console.print("[green]No failure.[/green]")
         return 0
     console.print("[red]X MISMATCH DETECTED.[/red]")
     sqlite_log.log_event(con, incident_id, "detected", {"got": first, "expected_rev": "B"})
 
-    recalled = _recall_step(console, memory, "RAG retrieval returns old document revision; live serves stale revision; alias drift fix switch alias")
+    recalled = _recall_step(
+        console,
+        memory,
+        "RAG retrieval returns old document revision; live serves stale revision;"
+        " alias drift fix switch alias",
+    )
     sqlite_log.log_event(con, incident_id, "recalled", {"n": len(recalled)})
     if recalled:
-        console.print("[cyan]> Recalled fix says: 'switch alias A -> B'. MUST re-verify live state before acting.[/cyan]")
+        console.print(
+            "[cyan]> Recalled fix says: 'switch alias A -> B'."
+            " MUST re-verify live state before acting.[/cyan]"
+        )
 
     # CRITICAL: re-verify live state; do NOT let memory authorize.
     live = sqlite_log.get_alias(con, alias) or store.get_alias_target(alias)
@@ -351,11 +499,21 @@ def run_scenario3(settings: Settings, console: Console, auto_yes: bool = False, 
             (f"SQLite alias {alias}", f"{live}"),
             ("Qdrant alias target", f"{qdrant_live}"),
             (f"target {col_b} exact?", "PASS" if ok_b else f"FAIL {errs[:2]}"),
-            ("cache entry", f"rev {cache_state['revision']} stale={cache_state['stale']}" if cache_state else "none"),
+            (
+                "cache entry",
+                f"rev {cache_state['revision']} stale={cache_state['stale']}"
+                if cache_state
+                else "none",
+            ),
             ("live query rev", f"{first['revision']} via {first['via']}"),
         ],
     )
-    sqlite_log.log_event(con, incident_id, "diagnosed", {"live": live, "ok_b": ok_b, "cache": cache_state, "recalled": len(recalled)})
+    sqlite_log.log_event(
+        con,
+        incident_id,
+        "diagnosed",
+        {"live": live, "ok_b": ok_b, "cache": cache_state, "recalled": len(recalled)},
+    )
 
     # REJECTION GATE -- the single most important behavior.
     if live == col_b and ok_b:
@@ -369,7 +527,12 @@ def run_scenario3(settings: Settings, console: Console, auto_yes: bool = False, 
                 border_style="red",
             )
         )
-        sqlite_log.log_event(con, incident_id, "rejected_recalled_fix", {"reason": "alias already correct", "live": live})
+        sqlite_log.log_event(
+            con,
+            incident_id,
+            "rejected_recalled_fix",
+            {"reason": "alias already correct", "live": live},
+        )
     else:
         console.print("[red]Alias evidence unexpected; escalating without alias write.[/red]")
         sqlite_log.set_state(con, incident_id, "ESCALATED")
@@ -377,9 +540,17 @@ def run_scenario3(settings: Settings, console: Console, auto_yes: bool = False, 
 
     # Diagnose different cause: stale cache.
     if not (cache_state and cache_state["stale"] and first.get("via") == "stale-cache"):
-        console.print("[yellow]Cache not obviously stale; escalating for deeper retrieval/cache diagnostics. No alias write made.[/yellow]")
+        console.print(
+            "[yellow]Cache not obviously stale;"
+            " escalating for deeper retrieval/cache diagnostics."
+            " No alias write made.[/yellow]"
+        )
         sqlite_log.set_state(con, incident_id, "ESCALATED")
-        console.print(Panel("SCENARIO 3 SAFE: wrong fix rejected, no inappropriate write.", border_style="green"))
+        console.print(
+            Panel(
+                "SCENARIO 3 SAFE: wrong fix rejected, no inappropriate write.", border_style="green"
+            )
+        )
         return 0
 
     console.print("[bold]Revised hypothesis: stale-cache (not alias drift).[/bold]")
@@ -397,26 +568,48 @@ def run_scenario3(settings: Settings, console: Console, auto_yes: bool = False, 
 
     second = gateway_query(con, store, alias, cache_key, list(canary["query_vector"]))
     passed = second["revision"] == "B" and second["point_id"] == canary["expected_point_id"]
-    console.print(f"> re-query: rev [bold]{second['revision']}[/bold] ({second['via']}) -> {'[green]PASS[/green]' if passed else '[red]FAIL[/red]'}")
+    status = "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
+    console.print(
+        f"> re-query: rev [bold]{second['revision']}[/bold] ({second['via']}) -> {status}"
+    )
     if not passed:
         sqlite_log.set_state(con, incident_id, "FAILED")
         return 5
     sqlite_log.set_state(con, incident_id, "RESOLVED")
     sqlite_log.log_event(con, incident_id, "verified", {"got": second})
 
-    ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    ts = datetime.datetime.now(datetime.UTC).isoformat()
     content = (
-        f"AFTERTRACE incident s3 (rejection). Symptom: query {canary['query_id']} expected B but got A. "
-        f"Recalled fix (alias A->B) REJECTED: live alias {alias} already -> {col_b}, target exact. "
-        f"True cause: stale cache key {cache_key} served rev A. Action: invalidated cache only, alias unchanged. "
-        f"Outcome: re-query rev B PASS. Lesson: never apply recalled repair without live precondition check."
+        f"AFTERTRACE incident s3 (rejection). Symptom: query {canary['query_id']}"
+        " expected B but got A. "
+        f"Recalled fix (alias A->B) REJECTED: live alias {alias} already -> {col_b},"
+        " target exact. "
+        f"True cause: stale cache key {cache_key} served rev A."
+        " Action: invalidated cache only, alias unchanged. "
+        "Outcome: re-query rev B PASS."
+        " Lesson: never apply recalled repair without live precondition check."
     )
     _retain_incident(
-        console, memory, con, incident_id, content,
+        console,
+        memory,
+        con,
+        incident_id,
+        content,
         document_id=f"aftertrace-s3-{corpus['corpus']}",
-        metadata={"incident_id": incident_id, "scenario": "s3-reject", "corpus": corpus["corpus"],
-                  "alias": alias, "occurred_at": ts},
+        metadata={
+            "incident_id": incident_id,
+            "scenario": "s3-reject",
+            "corpus": corpus["corpus"],
+            "alias": alias,
+            "occurred_at": ts,
+        },
     )
     memory.close()
-    console.print(Panel("SCENARIO 3 RESOLVED: wrong fix rejected; cache cause fixed. No inappropriate alias write.", border_style="green"))
+    console.print(
+        Panel(
+            "SCENARIO 3 RESOLVED: wrong fix rejected; cache cause fixed."
+            " No inappropriate alias write.",
+            border_style="green",
+        )
+    )
     return 0

@@ -1,7 +1,9 @@
 """Validated environment configuration (spec p27/p29)."""
+
 from __future__ import annotations
 
 import os
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -25,7 +27,7 @@ class Settings(BaseModel):
     memory_recall_tokens: int = 1500
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         def env(name: str, default: str = "") -> str:
             return os.environ.get(name, default)
 

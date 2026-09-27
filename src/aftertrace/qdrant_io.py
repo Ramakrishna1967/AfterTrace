@@ -1,4 +1,5 @@
 """Narrow Qdrant HTTP adapter (spec p20)."""
+
 from __future__ import annotations
 
 import httpx
@@ -12,16 +13,16 @@ async def resolve_alias(q: httpx.AsyncClient, alias: str) -> str:
     r = await q.get("/aliases")
     r.raise_for_status()
     matches = [
-        x["collection_name"]
-        for x in r.json()["result"]["aliases"]
-        if x["alias_name"] == alias
+        x["collection_name"] for x in r.json()["result"]["aliases"] if x["alias_name"] == alias
     ]
     if len(matches) != 1:
         raise ValueError("alias missing or ambiguous")
     return matches[0]
 
 
-async def switch_alias(q: httpx.AsyncClient, alias: str, expected_old: str, sealed_target: str) -> dict:
+async def switch_alias(
+    q: httpx.AsyncClient, alias: str, expected_old: str, sealed_target: str
+) -> dict:
     """Atomic alias delete+create. Caller owns pause/drain/journal/approval/single-writer.
 
     No hidden retries. Ambiguous adapter failures -> OutcomeUnknown.
@@ -29,10 +30,12 @@ async def switch_alias(q: httpx.AsyncClient, alias: str, expected_old: str, seal
     actual = await resolve_alias(q, alias)
     if actual != expected_old:
         raise ValueError("alias changed before dispatch")
-    payload = {"actions": [
-        {"delete_alias": {"alias_name": alias}},
-        {"create_alias": {"alias_name": alias, "collection_name": sealed_target}},
-    ]}
+    payload = {
+        "actions": [
+            {"delete_alias": {"alias_name": alias}},
+            {"create_alias": {"alias_name": alias, "collection_name": sealed_target}},
+        ]
+    }
     try:
         response = await q.post("/collections/aliases", json=payload)
         response.raise_for_status()

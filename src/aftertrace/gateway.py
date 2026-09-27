@@ -1,4 +1,5 @@
 """Retrieval gateway — coherent routing snapshot + scoped cache (spec p9)."""
+
 from __future__ import annotations
 
 import hashlib
@@ -73,7 +74,9 @@ class Gateway:
                 return {
                     "error": "gateway gated",
                     "status": 503,
-                    "route": {k: route[k] for k in ("collection_name", "generation", "cache_epoch")},
+                    "route": {
+                        k: route[k] for k in ("collection_name", "generation", "cache_epoch")
+                    },
                 }
             # Capture immutable tuple
             captured = {

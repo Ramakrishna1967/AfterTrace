@@ -1,4 +1,5 @@
 """Outbox lifecycle: pending->submitted->completed/retry/dead (spec p22)."""
+
 import pytest
 
 from aftertrace.db import Database
@@ -69,9 +70,18 @@ def _insert(db, row):
             "INSERT INTO memory_outbox(event_id,incident_id,document_id,bank_id,payload_json,"
             "payload_sha256,operation_id,state,attempts,next_attempt_at)"
             " VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (row["event_id"], row["incident_id"], row["document_id"], row["bank_id"],
-             row["payload_json"], row["payload_sha256"], row["operation_id"],
-             "pending", 0, row["next_attempt_at"]),
+            (
+                row["event_id"],
+                row["incident_id"],
+                row["document_id"],
+                row["bank_id"],
+                row["payload_json"],
+                row["payload_sha256"],
+                row["operation_id"],
+                "pending",
+                0,
+                row["next_attempt_at"],
+            ),
         )
     finally:
         conn.close()

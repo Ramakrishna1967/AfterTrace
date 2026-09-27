@@ -9,6 +9,7 @@ Commands (each a fresh process):
 --local forces LOCAL-SIM + LOCAL-FALLBACK memory even if Cloud creds exist.
 Without Cloud creds the tool automatically uses local modes and labels output.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,13 +31,17 @@ def cmd_check(settings, args) -> int:
         ("HINDSIGHT_BASE_URL", bool(settings.hindsight_base_url)),
         ("HINDSIGHT_API_KEY", bool(settings.hindsight_api_key)),
     ]:
-        console.print(f"  {name}: {'[green]SET[/green]' if present else '[yellow]MISSING[/yellow]'}")
+        console.print(
+            f"  {name}: {'[green]SET[/green]' if present else '[yellow]MISSING[/yellow]'}"
+        )
     console.print(f"  bank: {settings.bank_id}")
     console.print(f"  sqlite: {settings.sqlite_path}")
     if not settings.qdrant_configured:
         console.print("[yellow]Qdrant Cloud not configured -> LOCAL-SIM vector mode.[/yellow]")
     if not settings.hindsight_configured:
-        console.print("[yellow]Hindsight Cloud not configured -> LOCAL-FALLBACK memory mode.[/yellow]")
+        console.print(
+            "[yellow]Hindsight Cloud not configured -> LOCAL-FALLBACK memory mode.[/yellow]"
+        )
     if args.local:
         console.print("[dim]--local forced.[/dim]")
     return 0
@@ -46,7 +51,11 @@ def cmd_reset(settings, out=None) -> int:
     import os
 
     out = out or console
-    for path in [settings.sqlite_path, settings.sqlite_path + "-wal", settings.sqlite_path + "-shm"]:
+    for path in [
+        settings.sqlite_path,
+        settings.sqlite_path + "-wal",
+        settings.sqlite_path + "-shm",
+    ]:
         try:
             if os.path.exists(path):
                 os.remove(path)
@@ -54,7 +63,9 @@ def cmd_reset(settings, out=None) -> int:
         except Exception as e:
             out.print(f"[yellow]could not remove {path}: {e}[/yellow]")
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    fb = os.environ.get("AFTERTRACE_MEMORY_FALLBACK", os.path.join(here, ".data", "memory_fallback.jsonl"))
+    fb = os.environ.get(
+        "AFTERTRACE_MEMORY_FALLBACK", os.path.join(here, ".data", "memory_fallback.jsonl")
+    )
     try:
         if os.path.exists(fb):
             os.remove(fb)
@@ -96,9 +107,13 @@ def cmd_doctor(settings, out=None) -> int:
         ("HINDSIGHT_BASE_URL", bool(settings.hindsight_base_url)),
         ("HINDSIGHT_API_KEY", bool(settings.hindsight_api_key)),
     ]:
-        out.print(f"  {name}: {'[green]SET[/green]' if present else '[yellow]MISSING (local modes will be used)[/yellow]'}")
+        status = "[green]SET[/green]" if present else "[yellow]MISSING[/yellow]"
+        suffix = "" if present else " (local modes will be used)"
+        out.print(f"  {name}: {status}{suffix}")
     if not settings.qdrant_configured or not settings.hindsight_configured:
-        out.print("[dim]Tip: without Cloud keys the demo runs labeled LOCAL-SIM / LOCAL-FALLBACK.[/dim]")
+        out.print(
+            "[dim]Tip: without Cloud keys the demo runs labeled LOCAL-SIM / LOCAL-FALLBACK.[/dim]"
+        )
     out.print("[dim]Next: python -m cli demo --local --yes[/dim]")
     return 0 if ok else 1
 
@@ -117,16 +132,23 @@ def cmd_demo(settings, auto_yes: bool, force_local: bool, out=None, approver=Non
         out.print(f"[bold cyan]===== {name} =====[/bold cyan]")
         code = fn(settings, out, auto_yes=auto_yes, force_local=force_local, approver=approver)
         if code != 0:
-            out.print(f"[red]{name} exited {code}; demo aborted. Fix above, then re-run demo.[/red]")
+            out.print(
+                f"[red]{name} exited {code}; demo aborted. Fix above, then re-run demo.[/red]"
+            )
             return code
-    out.print("[bold green]DEMO COMPLETE: s1 fixed cold, s2 transfer via memory, s3 rejected wrong fix.[/bold green]")
+    out.print(
+        "[bold green]DEMO COMPLETE: s1 fixed cold, s2 transfer via memory,"
+        " s3 rejected wrong fix.[/bold green]"
+    )
     out.print("[dim]Next: python -m cli tui --local (interactive UI) or re-run demo.[/dim]")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     settings = load_settings()
-    p = argparse.ArgumentParser(prog="aftertrace", description="Memory-guided incident recovery CLI.")
+    p = argparse.ArgumentParser(
+        prog="aftertrace", description="Memory-guided incident recovery CLI."
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
     for name, help_text in [
         ("scenario1", "Cold incident: alias drift, no prior memory."),

@@ -3,8 +3,8 @@
 The agent orders checks; these predicates decide admissibility.
 Each observation carries timestamp, scope, route generation, source tool, digest.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 ALLOWED_ACTIONS = (
     "inspect_alias",

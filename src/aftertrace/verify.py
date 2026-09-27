@@ -1,4 +1,5 @@
 """Verification — exact index checks + serving probes (spec p10-11)."""
+
 from __future__ import annotations
 
 import hashlib

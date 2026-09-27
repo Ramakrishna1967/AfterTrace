@@ -1,4 +1,5 @@
 """Security + budgets (spec p25)."""
+
 from aftertrace import security as sec
 
 
@@ -21,12 +22,14 @@ def test_metadata_allowlist():
 
 def test_scope_binding():
     import pytest
+
     with pytest.raises(PermissionError):
         sec.require_scope({"project_id": "a"}, "b", "c", "staging")
 
 
 def test_budget_exhaustion():
     import pytest
+
     b = sec.Budget(max_dispatches=1, wall_clock_s=60)
     b.check_dispatch()
     with pytest.raises(RuntimeError):

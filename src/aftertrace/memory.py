@@ -1,4 +1,5 @@
 """Hindsight adapter — retain/recall with provenance (spec p14-15)."""
+
 from __future__ import annotations
 
 import os
