@@ -6,3 +6,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+# Real credentials must never be committed (tracked .env.example is the safe template).
+.env
+.env.*
+!.env.example
