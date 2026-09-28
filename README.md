@@ -48,6 +48,13 @@ In the TUI just describe what you want in plain words ("fix the alias drift",
 `/scenario1 /scenario2 /scenario3 /demo /history /memory /rerun`
 (`tab` completes, `ctrl+p` opens the palette, `ctrl+r` re-runs the last flow).
 
+Power-user input: `@path` injects a project file (fuzzy match, capped,
+redacted); `!command` runs a shell command and shows the output as a result.
+More flows: `/new` fresh context, `/sessions` incident list, `/export`
+redacted JSON, `/undo` + `/redo` alias-switch revert (approval-gated),
+`/compact` collapse transcript, `/models` backend readiness, `/connect`
+session-only Cloud keys.
+
 Or step by step (each a fresh process):
 
 ```bash
@@ -55,7 +62,8 @@ python -m cli reset
 python -m cli scenario1 --yes   # cold alias-drift: detect, fix A->B, verify, retain
 python -m cli scenario2 --yes   # NEW corpus, recall s1, memory-ordered alias check, fix, verify
 python -m cli scenario3 --yes   # same symptom, alias already correct -> REJECT recalled alias fix, fix stale cache instead
-python -m cli tui --local       # interactive full-screen terminal UI (same flows, modal approvals)
+python -m cli sessions          # list recorded incidents
+python -m cli export            # save latest incident as redacted JSON
 ```
 
 Omit `--yes` for an interactive `y/n` approval prompt (required narrative:

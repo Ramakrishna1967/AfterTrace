@@ -157,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
         ("check", "Show config presence (no secrets)."),
         ("doctor", "Unified env + dependency + DB check (no secrets)."),
         ("demo", "One-command ordered demo: reset -> s1 -> s2 -> s3."),
+        ("sessions", "List recorded incidents."),
+        ("export", "Save an incident as redacted JSON."),
         ("reset", "Clear local SQLite log + fallback memory (fresh demo)."),
         ("tui", "Interactive full-screen terminal UI (OpenCode style)."),
         ("tui-layout", "Headless TUI geometry report (paste output when UI looks wrong)."),
@@ -164,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
         s = sub.add_parser(name, help=help_text)
         s.add_argument("--yes", action="store_true", help="Auto-approve repair (non-interactive).")
         s.add_argument("--local", action="store_true", help="Force local simulation modes.")
+    sub.choices["export"].add_argument("export_target", nargs="?", default="",
+                                       help="Incident id (prefix ok); defaults to latest.")
     args = p.parse_args(argv)
     force_local = bool(getattr(args, "local", False))
     auto_yes = bool(getattr(args, "yes", False))
@@ -173,6 +177,32 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_doctor(settings)
     if args.cmd == "demo":
         return cmd_demo(settings, auto_yes=auto_yes, force_local=force_local)
+    if args.cmd == "sessions":
+        from .sessions_ops import list_incidents
+
+        items = list_incidents(settings)
+        if not items:
+            console.print("No incidents recorded yet. Run demo first.")
+            return 0
+        for i, it in enumerate(items, 1):
+            console.print(f"  {i}. {it['scenario']} — {it['state']} ({it['id'][:8]})")
+        return 0
+    if args.cmd == "export":
+        from .sessions_ops import export_incident, list_incidents
+
+        target = getattr(args, "export_target", "") or ""
+        if not target:
+            items = list_incidents(settings)
+            if not items:
+                console.print("Nothing to export — run demo first.")
+                return 2
+            target = items[-1]["id"]
+        res = export_incident(settings, target)
+        if "error" in res:
+            console.print(f"[red]{res['error']}[/red]")
+            return 2
+        console.print(f"Exported {res['events']} events -> {res['path']} (secrets redacted).")
+        return 0
     if args.cmd == "reset":
         return cmd_reset(settings)
     if args.cmd == "tui":

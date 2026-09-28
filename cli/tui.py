@@ -21,7 +21,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Input, OptionList, RichLog, Static
+from textual.widgets import Button, Input, OptionList, RichLog, Static
 from textual.widgets._option_list import Option
 
 VERSION = "0.1.0"
@@ -67,6 +67,14 @@ COMMANDS = (
     ("/history", "Browse past incidents (add a number for detail)"),
     ("/memory", "Browse retained experience (optional query words)"),
     ("/rerun", "Repeat the last scenario/demo run"),
+    ("/new", "Fresh transcript context (keeps the log on disk)"),
+    ("/sessions", "List recorded sessions"),
+    ("/export", "Save an incident as redacted JSON (optional number)"),
+    ("/undo", "Revert the last alias switch (asks approval)"),
+    ("/redo", "Re-apply an undone alias switch (asks approval)"),
+    ("/compact", "Collapse the transcript to key outcomes"),
+    ("/models", "Show backend readiness"),
+    ("/connect", "Set Cloud keys for this session (never stored)"),
     ("/check", "Show config presence (no secrets)"),
     ("/reset", "Clear local log + fallback memory"),
     ("/clear", "Clear the transcript"),
@@ -182,7 +190,6 @@ class ConfirmScreen(ModalScreen[bool]):
 
 class PaletteScreen(ModalScreen[str | None]):
     """ctrl+p command palette."""
-
     BINDINGS = [("escape", "close", "Close")]
 
     def compose(self) -> ComposeResult:
@@ -194,6 +201,46 @@ class PaletteScreen(ModalScreen[str | None]):
 
     def action_close(self) -> None:
         self.dismiss(None)
+
+
+_CONNECT_FIELDS = (
+    ("QDRANT_URL", "QDRANT_URL (https://...qdrant.cloud)", False),
+    ("QDRANT_API_KEY", "QDRANT_API_KEY", True),
+    ("HINDSIGHT_BASE_URL", "HINDSIGHT_BASE_URL", False),
+    ("HINDSIGHT_API_KEY", "HINDSIGHT_API_KEY", True),
+)
+
+
+class ConnectScreen(ModalScreen[bool]):
+    """BYOK form: Cloud keys apply to this session only, never stored or shown."""
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def compose(self) -> ComposeResult:
+        yield Static("Connect Cloud backends — session only, never stored:", id="confirm-title")
+        with Vertical(id="connect-box"):
+            for var, label, secret in _CONNECT_FIELDS:
+                yield Static(label, classes="connect-label")
+                yield Input(password=secret, id=f"connect-{var}")
+            with Horizontal(id="connect-buttons"):
+                yield Button("Save", id="connect-save", variant="primary")
+                yield Button("Cancel", id="connect-cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "connect-save":
+            values = {}
+            for var, _label, _secret in _CONNECT_FIELDS:
+                try:
+                    values[var] = self.query_one(f"#connect-{var}", Input).value.strip()
+                except Exception:
+                    values[var] = ""
+            self.app._pending_connect = values  # type: ignore[attr-defined]
+            self.dismiss(True)
+        else:
+            self.dismiss(False)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
 
 
 class AfterTraceApp(App):
@@ -222,6 +269,12 @@ class AfterTraceApp(App):
     #confirm-body { width: 76; max-height: 12; border: solid #3a3a40;
                    background: #141416; padding: 1 2; }
     #confirm-hint { width: 76; text-align: center; color: #555558; }
+    #connect-box { width: 76; border: solid #3a3a40; background: #141416; padding: 1 2; }
+    #connect-box Input { border: solid #3a3a40; margin-bottom: 1; }
+    #connect-box Input:focus { border: solid #2f81f7; }
+    .connect-label { color: #555558; }
+    #connect-buttons { height: auto; align: center middle; }
+    #connect-buttons Button { margin: 0 1; }
     #palette { width: 76; max-height: 14; border: solid #3a3a40; background: #141416; }
     """
 
@@ -241,6 +294,8 @@ class AfterTraceApp(App):
         self._tips_widget: Static | None = None
         self._last_run: tuple[str, bool] | None = None
         self._history: list[tuple[str, str, str, str]] = []
+        self._undone: list[dict] = []
+        self._pending_connect: dict[str, str] = {}
 
     def compose(self) -> ComposeResult:
         yield Vertical(id="topgap")
@@ -318,12 +373,21 @@ class AfterTraceApp(App):
         if not text:
             return
         self._write_line(f"> {text}")
-        if text.startswith("/"):
-            cmd, auto_yes = parse_command(text)
-            rest = text.strip().split()[1:]
+        if text.startswith("!"):
+            self._run_bash(text[1:])
+            return
+        from .file_ref import extract_refs
+
+        refs = extract_refs(text)
+        body = re.sub(r"@[A-Za-z0-9_.\-/\\]+", "", text).strip()
+        if refs:
+            self._inject_refs(refs)
+        if body.startswith("/"):
+            cmd, auto_yes = parse_command(body)
+            rest = [p for p in body.split()[1:] if p != "--yes"]
             self._dispatch(cmd, auto_yes, rest)
-        else:
-            cmd, rest = route_text(text)
+        elif body:
+            cmd, rest = route_text(body)
             if not cmd:
                 self._write_line("Not sure what you mean — try /help, /scenarios, or /demo.")
             elif cmd == "scenarios":
@@ -331,6 +395,58 @@ class AfterTraceApp(App):
             else:
                 self._write_line(f"Understood as /{cmd} — running.")
                 self._dispatch(cmd, False, [rest] if rest else [])
+        # else: file refs only — already acknowledged above.
+
+    def _inject_refs(self, frags: list[str]) -> None:
+        from .file_ref import read_ref, resolve_ref
+
+        for frag in frags[:4]:
+            hits = resolve_ref(frag)
+            if not hits:
+                self._write_line(f"@{frag}: no match under project root.")
+            elif len(hits) == 1:
+                text, note = read_ref(hits[0])
+                if not text:
+                    self._write_line(f"@{hits[0]}: {note}.")
+                    continue
+                self._write_line(f"@{hits[0]}{note}:")
+                lines = text.splitlines()
+                for ln in lines[:60]:
+                    self._write_line("  " + ln[:200])
+                if len(lines) > 60:
+                    self._write_line("  ... (see the file for the rest)")
+            else:
+                self._write_line(f"@{frag}: {len(hits)} matches — be more specific:")
+                for h in hits[:8]:
+                    self._write_line(f"  @{h}")
+
+    def _run_bash(self, cmd: str) -> None:
+        if self._busy:
+            self._write_line("A run is already in progress — wait for it to finish.")
+            return
+        if not cmd.strip():
+            self._write_line("Empty command. Try !echo hello.")
+            return
+        self._busy = True
+
+        def _run() -> None:
+            try:
+                from .bash_tool import run_bash
+
+                r = run_bash(cmd)
+                lines = [f"!{cmd.strip()} (exit {r['exit']})"]
+                out = (r["output"] or "").splitlines()[:40]
+                lines += ["  " + ln[:200] for ln in out] if out else ["  (no output)"]
+                if r.get("note"):
+                    lines.append("  " + str(r["note"]).strip())
+                for ln in lines:
+                    self.call_from_thread(self._write_line, ln)
+            except Exception as e:
+                self.call_from_thread(self._write_line, f"[! failed: {e}]")
+            finally:
+                self._busy = False
+
+        self.run_worker(_run, thread=True, exclusive=True, description="bash")
 
     def action_complete(self) -> None:
         try:
@@ -405,12 +521,14 @@ class AfterTraceApp(App):
                     ).fetchall()
                 except Exception:
                     evs = []
-                for kind, at in evs:
+                for kind, _at in evs:
                     self._write_line(f"    · {kind}")
                 if not evs:
                     self._write_line("    (no events recorded)")
             else:
-                self._write_line(f"No incident #{arg.strip()} — {len(items)} recorded. Try /history.")
+                self._write_line(
+                    f"No incident #{arg.strip()} — {len(items)} recorded. Try /history."
+                )
             con.close()
             return
         if not items:
@@ -423,6 +541,185 @@ class AfterTraceApp(App):
             self._write_line(f"  {i}. {scen} — {state}   ({iid[:8]}, {str(at)[:16]})")
         self._write_line("Type /history N for the event trail of entry N.")
         con.close()
+
+    def _compact(self) -> None:
+        """Collapse the transcript to key outcome lines (deterministic, local only)."""
+        lines = list(self.captured)
+        keys = ("RESOLVED", "REJECTED", "MISMATCH", "PASS", "FAIL", "retained",
+                "exit code", "switched", "invalidated", "recall:")
+        keep = [ln for ln in lines if any(k in ln for k in keys)][-30:]
+        self.query_one("#transcript", RichLog).clear()
+        self.captured.clear()
+        self._write_line(f"Compacted {len(lines)} lines -> {len(keep)} key outcomes:")
+        for ln in keep:
+            self._write_line("  " + ln[:160])
+
+    def _show_models(self) -> None:
+        """Backend readiness from real settings. No network calls, no guessing."""
+        import sys
+
+        from .config import load_settings as _ls
+
+        s = _ls()
+        if s.qdrant_configured:
+            host = (s.qdrant_url or "").split("//")[-1].split("/")[0][:40]
+            self._write_line(f"vectors: Qdrant Cloud ready ({host})")
+        else:
+            from .config import VECTOR_DIM
+
+            self._write_line(
+                f"vectors: LOCAL-SIM fixture mode (dim {VECTOR_DIM}, hashes not embeddings)"
+            )
+        if s.hindsight_configured:
+            self._write_line(f"memory: Hindsight Cloud ready (bank {s.bank_id})")
+        else:
+            self._write_line("memory: LOCAL-FALLBACK file mode")
+        self._write_line(f"runtime: python {sys.version.split()[0]} (Textual TUI)")
+
+    def _open_connect(self) -> None:
+        async def _open() -> None:
+            try:
+                ok = await self.push_screen_wait(ConnectScreen())
+            except Exception:
+                return
+            if not ok:
+                self._write_line("Connect cancelled — nothing changed.")
+                return
+            vals = dict(getattr(self, "_pending_connect", {}))
+            self._pending_connect = {}
+            applied = [k for k, v in vals.items() if v]
+            for k in applied:
+                os.environ[k] = vals[k]
+            for k in [k for k in vals if k not in applied]:
+                os.environ.pop(k, None)
+            self.call_from_thread(self._render_statusline)
+            if applied:
+                self.call_from_thread(
+                    self._write_line,
+                    "Connected for this session: " + ", ".join(applied) + " (never stored).",
+                )
+            else:
+                self.call_from_thread(self._write_line, "All keys cleared — back to local modes.")
+
+        self.run_worker(_open, exclusive=False, description="connect")
+
+    def _export_flow(self, arg: str) -> None:
+        from .config import load_settings as _ls
+        from .sessions_ops import export_incident, list_incidents
+
+        try:
+            settings = _ls()
+            if not arg.strip():
+                items = list_incidents(settings)
+                if not items:
+                    self.call_from_thread(self._write_line, "Nothing to export — run /demo first.")
+                    return
+                arg = items[-1]["id"]
+            res = export_incident(settings, arg.strip())
+            if "error" in res:
+                self.call_from_thread(self._write_line, f"Export failed: {res['error']}")
+            else:
+                self.call_from_thread(
+                    self._write_line,
+                    f"Exported {res['events']} events -> {res['path']} (secrets redacted).",
+                )
+        except Exception as e:
+            self.call_from_thread(self._write_line, f"[export failed: {e}]")
+        finally:
+            self._busy = False
+
+    def _undo_redo_flow(self, cmd: str) -> None:
+        from . import sqlite_log
+        from .config import load_settings as _ls
+        from .qdrant_store import QdrantStore
+        from .sessions_ops import alias_for_collection, find_last_mutation
+
+        try:
+            settings = _ls()
+            if cmd == "redo":
+                if not self._undone:
+                    self.call_from_thread(self._write_line, "Nothing to redo — /undo first.")
+                    return
+                op = self._undone.pop()
+                alias, frm, to = op["alias"], op["from"], op["to"]
+                verb, evt = "Re-apply", "alias.reapplied"
+            else:
+                mut = find_last_mutation(settings)
+                if not mut:
+                    self.call_from_thread(
+                        self._write_line, "Nothing to undo — no alias switch recorded."
+                    )
+                    return
+                if mut["kind"] != "alias.switched":
+                    self.call_from_thread(
+                        self._write_line,
+                        f"Cannot undo {mut['kind']} — only alias switches are reversible "
+                        "(cache data is deleted, not moved).",
+                    )
+                    return
+                data = mut["data"]
+                before, after = data.get("before"), data.get("after")
+                if not before or not after:
+                    self.call_from_thread(
+                        self._write_line, "Cannot undo — journal entry lacks before/after."
+                    )
+                    return
+                alias = alias_for_collection(settings, after)
+                if not alias:
+                    self.call_from_thread(
+                        self._write_line,
+                        "Cannot undo — live alias already moved on from that collection.",
+                    )
+                    return
+                frm, to = after, before
+                verb, evt = "Revert", "alias.reverted"
+                op = {"alias": alias, "from": frm, "to": to,
+                      "incident_id": mut.get("incident_id", "")}
+            proposal = (f"{verb} alias {alias}: {frm} -> {to}\n"
+                        f"Live state will be re-verified before the write.")
+            if not self._make_approver()(proposal):
+                self.call_from_thread(self._write_line, f"{verb} cancelled — no writes made.")
+                if cmd == "redo":
+                    self._undone.append(op)
+                return
+            store = QdrantStore(settings, force_local=self._force_local)
+            try:
+                res = store.switch_alias(alias, frm, to)
+            except Exception as e:
+                if getattr(store, "local", False):
+                    self.call_from_thread(
+                        self._write_line,
+                        "Cannot revert here — LOCAL-SIM holds no persistent vector state "
+                        "across commands. Set Cloud keys for reversible operations.",
+                    )
+                else:
+                    self.call_from_thread(
+                        self._write_line,
+                        f"Revert failed ({e}). Route left gated — reconcile before retrying.",
+                    )
+                if cmd == "redo":
+                    self._undone.append(op)
+                return
+            con = sqlite_log.connect(settings.sqlite_path)
+            try:
+                sqlite_log.set_alias(con, alias, to)
+                sqlite_log.log_event(con, op["incident_id"],
+                                     evt, {"alias": alias, "before": frm, "after": to})
+            finally:
+                try:
+                    con.close()
+                except Exception:
+                    pass
+            if cmd == "undo":
+                self._undone.append({"alias": alias, "from": to, "to": frm,
+                                     "incident_id": op.get("incident_id", "")})
+            self.call_from_thread(
+                self._write_line, f"{verb}ed: {res['before']} -> {res['after']} (verified)."
+            )
+        except Exception as e:
+            self.call_from_thread(self._write_line, f"[{cmd} failed: {e}]")
+        finally:
+            self._busy = False
 
     def _dispatch(self, cmd: str, auto_yes: bool, rest: list[str] | None = None) -> None:
         rest = [r for r in (rest or []) if r != "--yes"]
@@ -464,11 +761,45 @@ class AfterTraceApp(App):
         if cmd == "rerun":
             self.action_rerun()
             return
+        if cmd in ("new", "sessions", "export", "undo", "redo", "compact", "summarize",
+                   "models", "connect"):
+            if cmd == "new":
+                self.query_one("#transcript", RichLog).clear()
+                self.captured.clear()
+                self._last_run = None
+                self._undone.clear()
+                self._write_line("Fresh context. Transcript cleared; on-disk log kept. Try /demo.")
+                return
+            if cmd == "sessions":
+                self._show_history("")
+                return
+            if cmd in ("compact", "summarize"):
+                self._compact()
+                return
+            if cmd == "models":
+                self._show_models()
+                return
+            if cmd == "connect":
+                self._open_connect()
+                return
+            if self._busy:
+                self._write_line("A run is already in progress — wait for it to finish.")
+                return
+            self._busy = True
+            if cmd == "export":
+                arg = " ".join(rest)
+                self.run_worker(lambda: self._export_flow(arg), thread=True,
+                                exclusive=True, description="export")
+            elif cmd in ("undo", "redo"):
+                self.run_worker(lambda: self._undo_redo_flow(cmd), thread=True,
+                                exclusive=True, description=cmd)
+            return
         if self._busy:
             self._write_line("A run is already in progress — wait for it to finish.")
             return
         if cmd in ("scenario1", "scenario2", "scenario3", "check", "reset", "doctor", "demo"):
-            self._last_run = (cmd, auto_yes) if cmd in ("scenario1", "scenario2", "scenario3", "demo") else self._last_run
+            if cmd in ("scenario1", "scenario2", "scenario3", "demo"):
+                self._last_run = (cmd, auto_yes)
             self._busy = True
             self.run_worker(
                 lambda: self._run_flow(cmd, auto_yes),
@@ -555,7 +886,8 @@ class AfterTraceApp(App):
                 from .memory_store import MemoryStore
 
                 query = arg.strip() or "incident alias drift cache revision repair"
-                tconsole.print(f"[bold]Memory browser[/bold] ({MemoryStore(settings, force_local=self._force_local).mode_label})")
+                _mode = MemoryStore(settings, force_local=self._force_local).mode_label
+                tconsole.print(f"[bold]Memory browser[/bold] ({_mode})")
                 try:
                     store = MemoryStore(settings, console=tconsole, force_local=self._force_local)
                     hits = store.recall(query, max_tokens=1500)
@@ -564,7 +896,9 @@ class AfterTraceApp(App):
                     tconsole.print(f"[red]recall failed: {e}[/red]")
                     return
                 if not hits:
-                    tconsole.print("[dim]No retained experience matches. Run /demo first to create some.[/dim]")
+                    tconsole.print(
+                        "[dim]No retained experience matches. Run /demo first to create some.[/dim]"
+                    )
                     return
                 for i, h in enumerate(hits[:5], 1):
                     snippet = (h.text or "").replace("\n", " ")[:280]
