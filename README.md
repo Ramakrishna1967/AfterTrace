@@ -118,7 +118,7 @@ python -m uvicorn aftertrace.app:app --host 127.0.0.1 --port 8000 --workers 1
 
 Health and metrics: `GET /health /ready /metrics`. UI at `/`, API under
 `/v1/*` (manifests, incidents, diagnostics, approvals, query, SSE events).
-See `SystemArchitecture.pdf` (Rev 1.1) for the full specification.
+Ops units and native Qdrant config live in `ops/`.
 
 ## Safety model
 
