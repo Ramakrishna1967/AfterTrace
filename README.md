@@ -1,86 +1,113 @@
-# AFTERTRACE — memory-guided incident recovery
+# AfterTrace
 
-**Memory proposes, live evidence disposes.** Two ways in:
+**Memory-guided incident recovery for retrieval pipelines.** AfterTrace detects
+when a RAG application silently serves a stale document revision, diagnoses the
+cause from live evidence and past incident experience, proposes a bounded
+repair, and verifies the fix — with a human approval gate on every write.
 
-- **CLI/TUI** (`cli/`) — incident-recovery flows against Qdrant + Hindsight Cloud,
-  fully cloud with zero local services except a single SQLite log file.
-- **Control-plane service** (`src/aftertrace/` + `web/`) — FastAPI + SQLite authority
-  implementing the full specification below; needs a running server (see Service).
+Core invariant: *memory proposes hypotheses; deterministic checks establish
+facts; authorization permits writes; verification determines recovery.*
 
-Spec background: `SystemArchitecture.pdf` (Rev 1.1). This implements the
-detect -> diagnose -> propose -> approve -> fix -> verify -> retain loop plus
-the critical **reject-wrong-recalled-fix** gate.
+## Why it exists
 
-## Stack
+Silent retrieval failures are the worst kind: ingestion jobs report success,
+health checks stay green, and users receive outdated answers with no error
+anywhere. AfterTrace closes that gap with an independent verification loop:
 
-- Qdrant Cloud (via `QDRANT_URL` + `QDRANT_API_KEY`) — real vector store.
-- Hindsight Cloud (via `HINDSIGHT_BASE_URL` + `HINDSIGHT_API_KEY`, `hindsight-client` SDK) — real memory.
-- SQLite single file `.data/aftertrace_cli.sqlite3` — minimal incident/event/alias/cache log.
-- Python 3.11+, `qdrant-client`, `hindsight-client`, `rich`, `textual`.
-  No Docker; the CLI needs no local servers.
-- Fake vectors are deterministic hash fixtures (`cli/vectors.py`), clearly labeled `[FIXTURE]`, not embeddings.
+```
+detect → diagnose → propose → approve → fix → verify → retain
+```
 
-Credentials are read from the environment only. Never hardcoded, never printed.
+Past incidents are retained as experience. Future diagnoses recall them to
+move faster — but a recalled fix is never applied blindly: live preconditions
+are re-verified first, and a mismatched memory is explicitly rejected.
 
-## Setup
+## Features
+
+- **Stale-revision detection** — canary queries assert the served revision against the intended one
+- **Evidence-based diagnosis** — exact index verification plus alias, route, and cache inspection
+- **Approval-gated repair** — interactive prompt, modal dialog, or `--yes` for automation; expired or changed plans are rejected
+- **Memory-guided transfer** — Hindsight Cloud recall prioritizes checks based on prior incidents
+- **Wrong-fix rejection** — recalled repairs that don't match live state are refused with a reason, never applied
+- **Full audit trail** — every incident, observation, approval, and mutation is journaled in SQLite
+- **Secret-safe by design** — credentials live in the environment only; logs, exports, and retained memory are redacted
+
+## Quickstart
+
+Requirements: Python 3.11+.
 
 ```bash
 pip install "qdrant-client>=1.12" "hindsight-client>=0.10" rich textual
-# Cloud mode:
+python -m cli doctor     # environment, dependencies, and storage check
+python -m cli demo --local --yes   # full end-to-end demonstration
+```
+
+For live backends instead of simulation, set the Cloud credentials first:
+
+```bash
 set QDRANT_URL=https://xxx.qdrant.cloud
 set QDRANT_API_KEY=...
 set HINDSIGHT_BASE_URL=https://...
 set HINDSIGHT_API_KEY=...
-# optional: set AFTERTRACE_BANK_ID=aftertrace
-python -m cli doctor
 ```
 
-Without those env vars the tool runs in clearly-labeled
-`LOCAL-SIM` / `LOCAL-FALLBACK` modes so the logic is still demonstrable.
-Pass `--local` to force simulation even with creds set.
+Without credentials the tool runs in clearly labeled `LOCAL-SIM` /
+`LOCAL-FALLBACK` modes. Pass `--local` to force simulation when credentials
+are present. Omit `--yes` for an interactive approval prompt.
 
-## Run
+## Usage
 
-One command runs the full story in order:
+### One-command demo
 
 ```bash
 python -m cli demo --local --yes
-python -m cli tui --local       # interactive full-screen terminal UI (same flows, modal approvals)
 ```
 
-In the TUI just describe what you want in plain words ("fix the alias drift",
-"show past runs", "what do you remember") or use slash commands:
-`/scenario1 /scenario2 /scenario3 /demo /history /memory /rerun`
-(`tab` completes, `ctrl+p` opens the palette, `ctrl+r` re-runs the last flow).
+Runs the complete narrative in order: a cold alias-drift fix, a
+memory-assisted transfer on a new corpus, and the rejection of a wrong
+recalled fix — each resolved and verified.
 
-Power-user input: `@path` injects a project file (fuzzy match, capped,
-redacted); `!command` runs a shell command and shows the output as a result.
-More flows: `/new` fresh context, `/sessions` incident list, `/export`
-redacted JSON, `/undo` + `/redo` alias-switch revert (approval-gated),
-`/compact` collapse transcript, `/models` backend readiness, `/connect`
-session-only Cloud keys, `/themes` switch color theme, `/share` save a
-markdown transcript, `/editor` compose in `$EDITOR`, `/details` run timings.
-
-Or step by step (each a fresh process):
+### Individual commands
 
 ```bash
-python -m cli reset
-python -m cli scenario1 --yes   # cold alias-drift: detect, fix A->B, verify, retain
-python -m cli scenario2 --yes   # NEW corpus, recall s1, memory-ordered alias check, fix, verify
-python -m cli scenario3 --yes   # same symptom, alias already correct -> REJECT recalled alias fix, fix stale cache instead
+python -m cli scenario1 --yes   # cold alias drift: detect, verify, repair, retain
+python -m cli scenario2 --yes   # same fault class, new corpus, memory-assisted
+python -m cli scenario3 --yes   # same symptom, different cause: reject stale memory
 python -m cli sessions          # list recorded incidents
-python -m cli export            # save latest incident as redacted JSON
+python -m cli export            # save the latest incident as redacted JSON
+python -m cli reset             # clear local state for a fresh run
 ```
 
-Omit `--yes` for an interactive `y/n` approval prompt (required narrative:
-recalled memory never auto-authorizes; human approves, live preconditions re-checked).
+### Interactive terminal UI
 
-## Service (control plane)
+```bash
+python -m cli tui --local
+```
 
-`src/aftertrace/` is the full FastAPI service from the spec: manifests,
-incidents, approvals, journaled alias cutover, deterministic verifier,
-durable SSE, memory outbox, and the `web/` trace UI. It needs a running
-server plus Qdrant and Hindsight reachability:
+A full-screen console with a prompt box, slash-command palette (`ctrl+p`),
+tab completion, and modal approvals. Plain-English input is routed to the
+matching flow ("fix the alias drift", "show past runs"). Power inputs:
+`@path` injects a project file, `!command` runs a shell command.
+Additional flows: `/history`, `/memory`, `/rerun` (`ctrl+r`), `/undo`,
+`/redo`, `/compact`, `/models`, `/connect`, `/themes`, `/share`, `/editor`,
+`/details`.
+
+## Architecture
+
+| Layer | Location | Role |
+| --- | --- | --- |
+| CLI / TUI | `cli/` | Operator flows, adapters, SQLite log |
+| Control plane | `src/aftertrace/` | FastAPI service: manifests, incidents, approvals, journaled cutover, verifier, SSE, outbox |
+| Trace UI | `web/` | Browser projection of incident state |
+| Fixtures | `fixtures/` | Manifests, sources, fault scenarios |
+| Operations | `ops/` | Service units, native Qdrant config |
+
+The vector store is Qdrant (Cloud or local); long-term memory is Hindsight
+Cloud with a local JSONL fallback. Test and demo corpora use deterministic
+hash-based fixture vectors, clearly labeled `[FIXTURE]` — never presented as
+real embeddings.
+
+### Control-plane service
 
 ```bash
 pip install -e ".[dev]"
@@ -89,31 +116,36 @@ $env:DATABASE_PATH = ".data/aftertrace.sqlite3"
 python -m uvicorn aftertrace.app:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Health: `GET /health /ready /metrics`, UI at `/`, API under `/v1/*`
-(manifests, incidents, diagnostics, approvals, query, SSE events).
-Ops units and native Qdrant config live in `ops/`.
+Health and metrics: `GET /health /ready /metrics`. UI at `/`, API under
+`/v1/*` (manifests, incidents, diagnostics, approvals, query, SSE events).
+See `SystemArchitecture.pdf` (Rev 1.1) for the full specification.
 
-## What each scenario proves
+## Safety model
 
-- **s1 cold**: B ingested correct, alias still A. Query expecting B returns A.
-  Agent verifies B exact, observes alias=A, proposes switch, asks approval,
-  switches, re-queries B PASS, retains real incident (no fabrication).
-- **s2 transfer**: new corpus/collections, same bug. Fresh process calls
-  `recall`, shows past s1 experience, prioritizes alias check first,
-  still verifies live state before writing. Re-query PASS.
-- **s3 rejection (most important)**: alias already correct (->B), stale cache
-  serves A. Recall returns old alias fix, agent re-checks live alias+target,
-  prints `REJECTED recalled alias fix`, investigates different cause,
-  invalidates cache only (alias untouched). No inappropriate write.
+- Recalled memory is advisory only — every repair requires fresh live evidence.
+- Approvals bind to an exact plan digest, scope, and expiry; reuse, scope
+  mismatch, or precondition drift aborts the write.
+- Alias mutations verify expected-before state and confirm observed-after
+  state; ambiguous outcomes enter reconciliation, never silent retry.
+- Redaction (`redact`, `redact_json`, metadata allowlist) applies to logs,
+  event streams, and retained memory.
 
-## Files
+## Testing
 
-- `cli/config.py` env + constants
-- `cli/vectors.py`, `cli/fixtures.py` deterministic fixture corpus
-- `cli/qdrant_store.py` Cloud adapter + labeled local-sim fallback
-- `cli/memory_store.py` Hindsight adapter + labeled JSONL fallback
-- `cli/sqlite_log.py` incident/event/alias/cache tables
-- `cli/agent.py` gateway query, exact verification, approval
-- `cli/scenarios.py` the three runs
-- `cli/__main__.py` `python -m cli ...` entry
-- `cli/tui.py` interactive full-screen terminal UI (`python -m cli tui`)
+```bash
+python -m pytest tests/ -q   # full suite: unit, integration, contract, evaluation
+python -m ruff check cli src tests
+python -m ruff format --check cli src tests
+```
+
+## Project structure
+
+```
+cli/            Operator CLI + interactive TUI
+src/aftertrace/ Control-plane service
+web/            Trace UI (served by the control plane)
+fixtures/       Manifests, sources, fault scenarios
+migrations/     SQLite authority schema
+ops/            Service units, native Qdrant config
+tests/          Unit, integration, contract, evaluation suites
+```
