@@ -114,7 +114,7 @@ def cmd_doctor(settings, out=None) -> int:
         out.print(
             "[dim]Tip: without Cloud keys the demo runs labeled LOCAL-SIM / LOCAL-FALLBACK.[/dim]"
         )
-    out.print("[dim]Next: python -m cli demo --local --yes[/dim]")
+    out.print("[dim]Next: aftertrace demo --local --yes[/dim]")
     return 0 if ok else 1
 
 
@@ -140,7 +140,7 @@ def cmd_demo(settings, auto_yes: bool, force_local: bool, out=None, approver=Non
         "[bold green]DEMO COMPLETE: s1 fixed cold, s2 transfer via memory,"
         " s3 rejected wrong fix.[/bold green]"
     )
-    out.print("[dim]Next: python -m cli tui --local (interactive UI) or re-run demo.[/dim]")
+    out.print("[dim]Next: aftertrace tui --local (interactive UI) or re-run demo.[/dim]")
     return 0
 
 

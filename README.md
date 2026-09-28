@@ -34,12 +34,13 @@ are re-verified first, and a mismatched memory is explicitly rejected.
 
 ## Quickstart
 
-Requirements: Python 3.11+.
+Requirements: Python 3.11+. One command installs everything, including the
+`aftertrace` CLI:
 
 ```bash
-pip install "qdrant-client>=1.12" "hindsight-client>=0.10" rich textual
-python -m cli doctor     # environment, dependencies, and storage check
-python -m cli demo --local --yes   # full end-to-end demonstration
+pip install -e .
+aftertrace doctor     # environment, dependencies, and storage check
+aftertrace demo --local --yes   # full end-to-end demonstration
 ```
 
 For live backends instead of simulation, set the Cloud credentials first:
@@ -60,7 +61,7 @@ are present. Omit `--yes` for an interactive approval prompt.
 ### One-command demo
 
 ```bash
-python -m cli demo --local --yes
+aftertrace demo --local --yes
 ```
 
 Runs the complete narrative in order: a cold alias-drift fix, a
@@ -70,18 +71,18 @@ recalled fix — each resolved and verified.
 ### Individual commands
 
 ```bash
-python -m cli scenario1 --yes   # cold alias drift: detect, verify, repair, retain
-python -m cli scenario2 --yes   # same fault class, new corpus, memory-assisted
-python -m cli scenario3 --yes   # same symptom, different cause: reject stale memory
-python -m cli sessions          # list recorded incidents
-python -m cli export            # save the latest incident as redacted JSON
-python -m cli reset             # clear local state for a fresh run
+aftertrace scenario1 --yes   # cold alias drift: detect, verify, repair, retain
+aftertrace scenario2 --yes   # same fault class, new corpus, memory-assisted
+aftertrace scenario3 --yes   # same symptom, different cause: reject stale memory
+aftertrace sessions          # list recorded incidents
+aftertrace export            # save the latest incident as redacted JSON
+aftertrace reset             # clear local state for a fresh run
 ```
 
 ### Interactive terminal UI
 
 ```bash
-python -m cli tui --local
+aftertrace tui --local
 ```
 
 A full-screen console with a prompt box, slash-command palette (`ctrl+p`),
