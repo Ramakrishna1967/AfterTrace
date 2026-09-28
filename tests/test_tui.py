@@ -7,6 +7,8 @@ import asyncio
 import json
 import os
 
+import pytest
+
 from cli.tui import AfterTraceApp, parse_command
 
 
@@ -318,7 +320,8 @@ async def test_tui_themes_switch_changes_rendering(monkeypatch, tmp_path):
         assert before != after, "theme switch must visibly re-skin the UI"
         import json as _json
 
-        assert _json.loads(open(tmp_path / "tui.json", encoding="utf-8").read()) == {"theme": "matrix"}
+        raw = open(tmp_path / "tui.json", encoding="utf-8").read()
+        assert _json.loads(raw) == {"theme": "matrix"}
         await _submit(pilot, app, "/themes aftertrace")
         await pilot.pause(0.8)
         assert app.theme == "aftertrace"

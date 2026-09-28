@@ -73,7 +73,6 @@ def tui_config_path() -> str:
 
 def load_tui_config() -> dict:
     import json as _json
-    import os as _os
 
     try:
         with open(tui_config_path(), encoding="utf-8") as f:
