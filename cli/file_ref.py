@@ -3,6 +3,7 @@
 Mirrors opencode docs: `@` does a fuzzy file search in the working directory
 and the matched file's content is added to the conversation.
 """
+
 from __future__ import annotations
 
 import os

@@ -4,6 +4,7 @@ Mirrors opencode docs: a leading `!` runs the shell and the output is added
 to the conversation as a tool result. Runs as the invoking user with a
 timeout and output cap; never raises.
 """
+
 from __future__ import annotations
 
 import os
@@ -41,7 +42,11 @@ def run_bash(cmd: str, timeout: int = TIMEOUT_S, cap: int = CAP_CHARS) -> dict:
             "note": f" (truncated at {cap} chars)" if truncated else "",
         }
     except subprocess.TimeoutExpired:
-        return {"exit": 124, "output": "", "truncated": False,
-                "note": f"timed out after {timeout}s"}
+        return {
+            "exit": 124,
+            "output": "",
+            "truncated": False,
+            "note": f"timed out after {timeout}s",
+        }
     except Exception as e:
         return {"exit": 127, "output": "", "truncated": False, "note": f"failed: {e}"}

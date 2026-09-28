@@ -199,6 +199,7 @@ class ConfirmScreen(ModalScreen[bool]):
 
 class PaletteScreen(ModalScreen[str | None]):
     """ctrl+p command palette."""
+
     BINDINGS = [("escape", "close", "Close")]
 
     def compose(self) -> ComposeResult:
@@ -554,8 +555,18 @@ class AfterTraceApp(App):
     def _compact(self) -> None:
         """Collapse the transcript to key outcome lines (deterministic, local only)."""
         lines = list(self.captured)
-        keys = ("RESOLVED", "REJECTED", "MISMATCH", "PASS", "FAIL", "retained",
-                "exit code", "switched", "invalidated", "recall:")
+        keys = (
+            "RESOLVED",
+            "REJECTED",
+            "MISMATCH",
+            "PASS",
+            "FAIL",
+            "retained",
+            "exit code",
+            "switched",
+            "invalidated",
+            "recall:",
+        )
         keep = [ln for ln in lines if any(k in ln for k in keys)][-30:]
         self.query_one("#transcript", RichLog).clear()
         self.captured.clear()
@@ -682,10 +693,16 @@ class AfterTraceApp(App):
                     return
                 frm, to = after, before
                 verb, evt = "Revert", "alias.reverted"
-                op = {"alias": alias, "from": frm, "to": to,
-                      "incident_id": mut.get("incident_id", "")}
-            proposal = (f"{verb} alias {alias}: {frm} -> {to}\n"
-                        f"Live state will be re-verified before the write.")
+                op = {
+                    "alias": alias,
+                    "from": frm,
+                    "to": to,
+                    "incident_id": mut.get("incident_id", ""),
+                }
+            proposal = (
+                f"{verb} alias {alias}: {frm} -> {to}\n"
+                f"Live state will be re-verified before the write."
+            )
             if not self._make_approver()(proposal):
                 self.call_from_thread(self._write_line, f"{verb} cancelled — no writes made.")
                 if cmd == "redo":
@@ -712,16 +729,23 @@ class AfterTraceApp(App):
             con = sqlite_log.connect(settings.sqlite_path)
             try:
                 sqlite_log.set_alias(con, alias, to)
-                sqlite_log.log_event(con, op["incident_id"],
-                                     evt, {"alias": alias, "before": frm, "after": to})
+                sqlite_log.log_event(
+                    con, op["incident_id"], evt, {"alias": alias, "before": frm, "after": to}
+                )
             finally:
                 try:
                     con.close()
                 except Exception:
                     pass
             if cmd == "undo":
-                self._undone.append({"alias": alias, "from": to, "to": frm,
-                                     "incident_id": op.get("incident_id", "")})
+                self._undone.append(
+                    {
+                        "alias": alias,
+                        "from": to,
+                        "to": frm,
+                        "incident_id": op.get("incident_id", ""),
+                    }
+                )
             self.call_from_thread(
                 self._write_line, f"{verb}ed: {res['before']} -> {res['after']} (verified)."
             )
@@ -770,8 +794,17 @@ class AfterTraceApp(App):
         if cmd == "rerun":
             self.action_rerun()
             return
-        if cmd in ("new", "sessions", "export", "undo", "redo", "compact", "summarize",
-                   "models", "connect"):
+        if cmd in (
+            "new",
+            "sessions",
+            "export",
+            "undo",
+            "redo",
+            "compact",
+            "summarize",
+            "models",
+            "connect",
+        ):
             if cmd == "new":
                 self.query_one("#transcript", RichLog).clear()
                 self.captured.clear()
@@ -797,11 +830,16 @@ class AfterTraceApp(App):
             self._busy = True
             if cmd == "export":
                 arg = " ".join(rest)
-                self.run_worker(lambda: self._export_flow(arg), thread=True,
-                                exclusive=True, description="export")
+                self.run_worker(
+                    lambda: self._export_flow(arg),
+                    thread=True,
+                    exclusive=True,
+                    description="export",
+                )
             elif cmd in ("undo", "redo"):
-                self.run_worker(lambda: self._undo_redo_flow(cmd), thread=True,
-                                exclusive=True, description=cmd)
+                self.run_worker(
+                    lambda: self._undo_redo_flow(cmd), thread=True, exclusive=True, description=cmd
+                )
             return
         if self._busy:
             self._write_line("A run is already in progress — wait for it to finish.")

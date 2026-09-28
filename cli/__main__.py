@@ -166,8 +166,9 @@ def main(argv: list[str] | None = None) -> int:
         s = sub.add_parser(name, help=help_text)
         s.add_argument("--yes", action="store_true", help="Auto-approve repair (non-interactive).")
         s.add_argument("--local", action="store_true", help="Force local simulation modes.")
-    sub.choices["export"].add_argument("export_target", nargs="?", default="",
-                                       help="Incident id (prefix ok); defaults to latest.")
+    sub.choices["export"].add_argument(
+        "export_target", nargs="?", default="", help="Incident id (prefix ok); defaults to latest."
+    )
     args = p.parse_args(argv)
     force_local = bool(getattr(args, "local", False))
     auto_yes = bool(getattr(args, "yes", False))

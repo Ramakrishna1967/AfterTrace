@@ -1,4 +1,5 @@
 """Unit tests for @ file refs and ! bash tool."""
+
 import os
 
 from cli import bash_tool, file_ref
@@ -57,6 +58,6 @@ def test_bash_echo_and_failure():
 def test_bash_timeout_and_cap():
     r = bash_tool.run_bash("python -c \"print('z'*9000)\"", cap=100)
     assert r["truncated"] is True and len(r["output"]) == 100
-    r = bash_tool.run_bash("python -c \"import time; time.sleep(30)\"", timeout=1)
+    r = bash_tool.run_bash('python -c "import time; time.sleep(30)"', timeout=1)
     assert r["exit"] == 124 and "timed out" in r["note"]
     assert os.path.isdir(bash_tool.project_root())

@@ -4,6 +4,7 @@ Used by both the argparse CLI (`sessions`, `export`) and the TUI
 (`/sessions`, `/export`, `/undo`, `/redo`, `/history`). Read-only except
 where noted. Exports are secret-redacted.
 """
+
 from __future__ import annotations
 
 import json

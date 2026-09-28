@@ -1,7 +1,11 @@
 # AFTERTRACE — memory-guided incident recovery
 
-**Memory proposes, live evidence disposes.** Fully cloud, zero local services
-(except a single SQLite log file). CLI only.
+**Memory proposes, live evidence disposes.** Two ways in:
+
+- **CLI/TUI** (`cli/`) — incident-recovery flows against Qdrant + Hindsight Cloud,
+  fully cloud with zero local services except a single SQLite log file.
+- **Control-plane service** (`src/aftertrace/` + `web/`) — FastAPI + SQLite authority
+  implementing the full specification below; needs a running server (see Service).
 
 Spec background: `SystemArchitecture.pdf` (Rev 1.1). This implements the
 detect -> diagnose -> propose -> approve -> fix -> verify -> retain loop plus
@@ -12,7 +16,8 @@ the critical **reject-wrong-recalled-fix** gate.
 - Qdrant Cloud (via `QDRANT_URL` + `QDRANT_API_KEY`) — real vector store.
 - Hindsight Cloud (via `HINDSIGHT_BASE_URL` + `HINDSIGHT_API_KEY`, `hindsight-client` SDK) — real memory.
 - SQLite single file `.data/aftertrace_cli.sqlite3` — minimal incident/event/alias/cache log.
-- Python 3.11+, `qdrant-client`, `hindsight-client`, `rich`. No Docker, no servers, no FastAPI/MCP/SSE.
+- Python 3.11+, `qdrant-client`, `hindsight-client`, `rich`, `textual`.
+  No Docker; the CLI needs no local servers.
 - Fake vectors are deterministic hash fixtures (`cli/vectors.py`), clearly labeled `[FIXTURE]`, not embeddings.
 
 Credentials are read from the environment only. Never hardcoded, never printed.
@@ -68,6 +73,24 @@ python -m cli export            # save latest incident as redacted JSON
 
 Omit `--yes` for an interactive `y/n` approval prompt (required narrative:
 recalled memory never auto-authorizes; human approves, live preconditions re-checked).
+
+## Service (control plane)
+
+`src/aftertrace/` is the full FastAPI service from the spec: manifests,
+incidents, approvals, journaled alias cutover, deterministic verifier,
+durable SSE, memory outbox, and the `web/` trace UI. It needs a running
+server plus Qdrant and Hindsight reachability:
+
+```bash
+pip install -e ".[dev]"
+$env:PYTHONPATH = "src"
+$env:DATABASE_PATH = ".data/aftertrace.sqlite3"
+python -m uvicorn aftertrace.app:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+Health: `GET /health /ready /metrics`, UI at `/`, API under `/v1/*`
+(manifests, incidents, diagnostics, approvals, query, SSE events).
+Ops units and native Qdrant config live in `ops/`.
 
 ## What each scenario proves
 

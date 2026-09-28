@@ -250,9 +250,7 @@ async def test_tui_sessions_export_seeded(monkeypatch, tmp_path):
         await pilot.pause(0.5)
         assert any("s9-test" in ln for ln in app.captured)
         await _submit(pilot, app, "/export")
-        ok = await _wait_until(
-            lambda: any("Exported" in ln for ln in app.captured), timeout=30
-        )
+        ok = await _wait_until(lambda: any("Exported" in ln for ln in app.captured), timeout=30)
         assert ok, app.captured
         paths = _glob.glob(os.path.join(str(tmp_path), "export_*.json"))
         assert not paths  # default export dir is .data, not tmp
