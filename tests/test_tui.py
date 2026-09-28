@@ -32,6 +32,15 @@ def test_route_text():
     assert route_text("") == ("", "")
 
 
+def test_suggest_command():
+    from cli.tui import suggest_command
+
+    assert suggest_command("dmeo") == "demo"
+    assert suggest_command("scenrio1") == "scenario1"
+    assert suggest_command("histry") == "history"
+    assert suggest_command("xyzzy") is None
+
+
 async def _wait_until(pred, timeout=30.0):
     for _ in range(int(timeout * 5)):
         if pred():

@@ -100,6 +100,15 @@ def parse_command(text: str) -> tuple[str, bool]:
     return cmd.lower(), "--yes" in parts[1:]
 
 
+def suggest_command(cmd: str) -> str | None:
+    """Closest known command for a typo ('dmeo' -> 'demo'). Pure, unit-tested."""
+    import difflib
+
+    known = [c.lstrip("/") for c, _ in COMMANDS] + ["quit", "exit", "q"]
+    matches = difflib.get_close_matches(cmd.lower(), known, n=1, cutoff=0.6)
+    return matches[0] if matches else None
+
+
 # keyword -> command for plain-text input. Order matters (first match wins).
 _INTENT_RULES = (
     (("histor", "past run", "previous", "log"), "history"),
@@ -808,7 +817,11 @@ class AfterTraceApp(App):
                 description=f"aftertrace-{cmd}",
             )
         else:
-            self._write_line(f"Unknown command /{cmd}. Try /help.")
+            hint = suggest_command(cmd)
+            if hint:
+                self._write_line(f"Unknown command /{cmd}. Did you mean /{hint}?")
+            else:
+                self._write_line(f"Unknown command /{cmd}. Try /help.")
 
     def _run_flow(self, cmd: str, auto_yes: bool, arg: str = "") -> None:
         from .config import load_settings as _ls
