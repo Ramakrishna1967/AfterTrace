@@ -58,7 +58,8 @@ redacted); `!command` runs a shell command and shows the output as a result.
 More flows: `/new` fresh context, `/sessions` incident list, `/export`
 redacted JSON, `/undo` + `/redo` alias-switch revert (approval-gated),
 `/compact` collapse transcript, `/models` backend readiness, `/connect`
-session-only Cloud keys.
+session-only Cloud keys, `/themes` switch color theme, `/share` save a
+markdown transcript, `/editor` compose in `$EDITOR`, `/details` run timings.
 
 Or step by step (each a fresh process):
 

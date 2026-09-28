@@ -26,6 +26,75 @@ from textual.widgets._option_list import Option
 
 VERSION = "0.1.0"
 
+
+def _define_themes():
+    from textual.theme import Theme
+
+    # `variables` carry literal hexes for inline Rich styles. Core roles like
+    # text-muted resolve to derived designations ("auto 87%") that Rich cannot
+    # parse, so inline code must only use these custom keys.
+    return (
+        Theme(
+            name="aftertrace", primary="#2f81f7", secondary="#2f81f7",
+            warning="#e6b800", error="#f85149", success="#2da44e", accent="#2f81f7",
+            foreground="#e8e8ea", background="#0d0d0f", surface="#141416",
+            panel="#141416", dark=True,
+            variables={"muted": "#6e6e72", "bright": "#f2f2f4", "accent": "#2f81f7",
+                       "warn": "#e6b800", "line": "#2b2b30"},
+        ),
+        Theme(
+            name="light", primary="#0969da", secondary="#0969da",
+            warning="#9a6700", error="#d1242f", success="#1a7f37", accent="#0969da",
+            foreground="#1f2328", background="#ffffff", surface="#f6f8fa",
+            panel="#f6f8fa", dark=False,
+            variables={"muted": "#59636e", "bright": "#1f2328", "accent": "#0969da",
+                       "warn": "#9a6700", "line": "#d0d7de"},
+        ),
+        Theme(
+            name="matrix", primary="#00ff41", secondary="#00ff41",
+            warning="#ffe600", error="#ff3131", success="#00ff41", accent="#00ff41",
+            foreground="#00ff41", background="#000000", surface="#061206",
+            panel="#061206", dark=True,
+            variables={"muted": "#009933", "bright": "#e6ffe6", "accent": "#00ff41",
+                       "warn": "#ffe600", "line": "#0f2f0f"},
+        ),
+    )
+
+
+def tui_config_path() -> str:
+    import os as _os
+
+    override = _os.environ.get("AFTERTRACE_TUI_CONFIG")
+    if override:
+        return override
+    here = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    return _os.path.join(here, ".data", "tui_config.json")
+
+
+def load_tui_config() -> dict:
+    import json as _json
+    import os as _os
+
+    try:
+        with open(tui_config_path(), encoding="utf-8") as f:
+            data = _json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_tui_config(data: dict) -> None:
+    import json as _json
+    import os as _os
+
+    path = tui_config_path()
+    try:
+        _os.makedirs(_os.path.dirname(_os.path.abspath(path)), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            _json.dump(data, f)
+    except Exception:
+        pass
+
 # 5x5 hollow outline glyphs, OpenCode-logo style (only what "aftertrace" needs).
 _GLYPHS = {
     "a": [" ███ ", "█   █", "█████", "█   █", "█   █"],
@@ -37,8 +106,13 @@ _GLYPHS = {
 }
 
 
-def block_logo() -> Text:
-    """Two-tone block-letter 'aftertrace': dim 'after', bright 'trace'."""
+def block_logo(app=None) -> Text:
+    """Two-tone block-letter 'aftertrace': dim 'after', bright 'trace'.
+
+    Colors resolve from the active Textual theme so /themes re-skins the logo.
+    """
+    dim = app._ink("muted", "#6e6e72") if app is not None else "#6e6e72"
+    bright = app._ink("bright", "#f2f2f4") if app is not None else "#f2f2f4"
     rows = []
     for i in range(5):
         rows.append(" ".join(_GLYPHS[ch][i] for ch in "after"))
@@ -51,9 +125,9 @@ def block_logo() -> Text:
     for i in range(5):
         if i:
             out.append("\n")
-        out.append(left[i], style="bold #6e6e72")
+        out.append(left[i], style=f"bold {dim}")
         out.append("  ")
-        out.append(right[i], style="bold #f2f2f4")
+        out.append(right[i], style=f"bold {bright}")
     return out
 
 
@@ -75,6 +149,10 @@ COMMANDS = (
     ("/compact", "Collapse the transcript to key outcomes"),
     ("/models", "Show backend readiness"),
     ("/connect", "Set Cloud keys for this session (never stored)"),
+    ("/themes", "List or switch color themes"),
+    ("/share", "Save transcript as a shareable markdown file"),
+    ("/editor", "Compose input in $EDITOR"),
+    ("/details", "Toggle run timing details"),
     ("/check", "Show config presence (no secrets)"),
     ("/reset", "Clear local log + fallback memory"),
     ("/clear", "Clear the transcript"),
@@ -88,6 +166,7 @@ TIPS = (
     "Scenario 3 rejects a recalled fix when the alias is already correct",
     "Append --yes to skip the approval prompt (non-interactive)",
     "No Cloud keys? Everything runs labeled LOCAL-SIM / LOCAL-FALLBACK",
+    "Try /themes matrix, /share, @cli/agent.py, or !echo hello",
 )
 
 
@@ -152,6 +231,13 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 def strip_ansi(text: str) -> str:
     """Plain-text copy for logs/tests; the RichLog gets the styled version."""
     return _ANSI_RE.sub("", text)
+
+
+def format_elapsed(seconds: float) -> str:
+    """mm:ss (or h:mm:ss). Pure, unit-tested."""
+    m, s = divmod(max(0, int(seconds)), 60)
+    h, m = divmod(m, 60)
+    return f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:d}:{s:02d}"
 
 
 class TUISink:
@@ -265,27 +351,27 @@ class AfterTraceApp(App):
     #center { height: auto; width: 100%; align: center middle; padding: 1 0; }
     #logo { height: 5; text-align: center; }
     #prompt-box { width: 68; max-width: 68; height: auto; border: none;
-                  border-left: tall #2f81f7; background: #141416; padding: 1 2; }
+                  border-left: tall $primary; background: $surface; padding: 1 2; }
     #prompt-input { border: none; height: 1; background: transparent; }
     #prompt-input:focus { border: none; }
     #statusline { height: 1; }
     #hints { width: 68; max-width: 68; height: 1; text-align: right; }
-    #tips { height: 1; text-align: center; }
-    #bottombar { dock: bottom; height: 1; background: #0d0d0f; color: #4a4a4e; }
+    #tips { height: 1; text-align: center; color: $warn; }
+    #bottombar { dock: bottom; height: 1; background: $background; color: $muted; }
     #cwd { width: 1fr; }
     #ver { width: auto; }
-    ConfirmScreen, PaletteScreen { align: center middle; }
-    #confirm-title { width: 76; text-align: center; color: #e6b800; text-style: bold; }
-    #confirm-body { width: 76; max-height: 12; border: solid #3a3a40;
-                   background: #141416; padding: 1 2; }
-    #confirm-hint { width: 76; text-align: center; color: #555558; }
-    #connect-box { width: 76; border: solid #3a3a40; background: #141416; padding: 1 2; }
-    #connect-box Input { border: solid #3a3a40; margin-bottom: 1; }
-    #connect-box Input:focus { border: solid #2f81f7; }
-    .connect-label { color: #555558; }
+    ConfirmScreen, PaletteScreen, ConnectScreen { align: center middle; }
+    #confirm-title { width: 76; text-align: center; color: $warn; text-style: bold; }
+    #confirm-body { width: 76; max-height: 12; border: solid $line;
+                   background: $surface; padding: 1 2; }
+    #confirm-hint { width: 76; text-align: center; color: $muted; }
+    #connect-box { width: 76; border: solid $line; background: $surface; padding: 1 2; }
+    #connect-box Input { border: solid $line; margin-bottom: 1; }
+    #connect-box Input:focus { border: solid $primary; }
+    .connect-label { color: $muted; }
     #connect-buttons { height: auto; align: center middle; }
     #connect-buttons Button { margin: 0 1; }
-    #palette { width: 76; max-height: 14; border: solid #3a3a40; background: #141416; }
+    #palette { width: 76; max-height: 14; border: solid $line; background: $surface; }
     """
 
     BINDINGS = [
@@ -297,6 +383,16 @@ class AfterTraceApp(App):
 
     def __init__(self, force_local: bool = False):
         super().__init__()
+        for theme in _define_themes():
+            try:
+                self.register_theme(theme)
+            except Exception:
+                pass
+        saved = load_tui_config().get("theme", "aftertrace")
+        try:
+            self.theme = saved if saved in ("aftertrace", "light", "matrix") else "aftertrace"
+        except Exception:
+            pass
         self._force_local = force_local
         self.captured: list[str] = []
         self._busy = False
@@ -306,12 +402,16 @@ class AfterTraceApp(App):
         self._history: list[tuple[str, str, str, str]] = []
         self._undone: list[dict] = []
         self._pending_connect: dict[str, str] = {}
+        self._details = False
+        import time as _time
+
+        self._started = _time.monotonic()
 
     def compose(self) -> ComposeResult:
         yield Vertical(id="topgap")
         yield RichLog(id="transcript", highlight=False, markup=False)
         with Vertical(id="center"):
-            yield Static(block_logo(), id="logo")
+            yield Static(block_logo(self), id="logo")
             with Center():
                 with Vertical(id="prompt-box"):
                     yield Input(
@@ -332,8 +432,39 @@ class AfterTraceApp(App):
         self._render_statusline()
         self._render_hints()
         self._render_tip()
+        self._tick_clock()
         self.set_interval(12, self._next_tip)
+        self.set_interval(5, self._tick_clock)
         self.query_one("#prompt-input", Input).focus()
+
+    def _tick_clock(self) -> None:
+        import time as _time
+
+        try:
+            self.query_one("#ver", Static).update(
+                f"{VERSION} · {format_elapsed(_time.monotonic() - self._started)}"
+            )
+        except Exception:
+            pass
+
+    def _ink(self, role: str, fallback: str) -> str:
+        """Current theme hex for a role (text, text-muted, primary, warning)."""
+        try:
+            vars_ = self.theme_variables
+            if isinstance(vars_, dict) and vars_.get(role):
+                return str(vars_[role])
+        except Exception:
+            pass
+        return fallback
+
+    def _refresh_chrome(self) -> None:
+        """Rebuild logo + status + hints from the active theme."""
+        try:
+            self.query_one("#logo", Static).update(block_logo(self))
+        except Exception:
+            pass
+        self._render_statusline()
+        self._render_hints()
 
     # ----- static chrome -----
     def _mode(self) -> tuple[str, str, str, str]:
@@ -346,21 +477,23 @@ class AfterTraceApp(App):
 
     def _render_statusline(self) -> None:
         a, b, bank, c = self._mode()
+        ink = self._ink
         t = Text()
-        t.append(a, style="bold #2f81f7")
+        t.append(a, style=f"bold {ink('accent', '#2f81f7')}")
         t.append("  ·  ")
-        t.append(b, style="#e8e8ea")
-        t.append(f"  bank {bank}", style="#555558")
+        t.append(b, style=ink("bright", "#e8e8ea"))
+        t.append(f"  bank {bank}", style=ink("muted", "#555558"))
         t.append("  ·  ")
-        t.append(c, style="#b58900")
+        t.append(c, style=ink("warn", "#b58900"))
         self.query_one("#statusline", Static).update(t)
 
     def _render_hints(self) -> None:
+        ink = self._ink
         t = Text()
-        t.append("tab", style="bold #e8e8ea")
-        t.append(" scenarios   ", style="#555558")
-        t.append("ctrl+p", style="bold #e8e8ea")
-        t.append(" commands", style="#555558")
+        t.append("tab", style=f"bold {ink('bright', '#e8e8ea')}")
+        t.append(" scenarios   ", style=ink("muted", "#555558"))
+        t.append("ctrl+p", style=f"bold {ink('bright', '#e8e8ea')}")
+        t.append(" commands", style=ink("muted", "#555558"))
         self.query_one("#hints", Static).update(t)
 
     def _render_tip(self) -> None:
@@ -612,14 +745,14 @@ class AfterTraceApp(App):
                 os.environ[k] = vals[k]
             for k in [k for k in vals if k not in applied]:
                 os.environ.pop(k, None)
-            self.call_from_thread(self._render_statusline)
+            # NOTE: async worker runs on the app thread — direct widget calls.
+            self._render_statusline()
             if applied:
-                self.call_from_thread(
-                    self._write_line,
+                self._write_line(
                     "Connected for this session: " + ", ".join(applied) + " (never stored).",
                 )
             else:
-                self.call_from_thread(self._write_line, "All keys cleared — back to local modes.")
+                self._write_line("All keys cleared — back to local modes.")
 
         self.run_worker(_open, exclusive=False, description="connect")
 
@@ -754,6 +887,137 @@ class AfterTraceApp(App):
         finally:
             self._busy = False
 
+    def _switch_theme(self, name: str) -> None:
+        """List themes or switch live; persists to .data (never committed)."""
+        names = ("aftertrace", "light", "matrix")
+        name = name.strip().lower()
+        if not name:
+            cur = getattr(self, "theme", "aftertrace")
+            self._write_line("Themes: " + ", ".join(
+                f"{n} (current)" if n == cur else n for n in names
+            ))
+            self._write_line("Usage: /themes matrix")
+            return
+        if name not in names:
+            self._write_line(f"Unknown theme '{name}'. Available: {', '.join(names)}.")
+            return
+        try:
+            self.theme = name
+        except Exception as e:
+            self._write_line(f"Theme switch failed: {e}")
+            return
+        save_tui_config({"theme": name})
+        self._refresh_chrome()
+        self._write_line(f"Theme: {name}.")
+
+    def _share_transcript(self) -> None:
+        """Write the transcript as a timestamped markdown artifact (file share)."""
+        import datetime as _dt
+        import os as _os
+
+        lines = [ln for ln in self.captured if ln.strip()]
+        if not lines:
+            self._write_line("Nothing to share — the transcript is empty.")
+            return
+        stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        here = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+        outdir = _os.path.join(here, ".data", "shared")
+        try:
+            _os.makedirs(outdir, exist_ok=True)
+            path = _os.path.join(outdir, f"aftertrace-{stamp}.md")
+            a, b, bank, c = self._mode()
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(f"# AFTERTRACE transcript ({stamp})\n\n")
+                f.write(f"Backend: {a} {b} · bank {bank} · {c}\n\n")
+                f.write("```\n" + "\n".join(lines) + "\n```\n")
+        except Exception as e:
+            self._write_line(f"Share failed: {e}")
+            return
+        self._write_line(f"Shared {len(lines)} lines -> {path}")
+
+    def _open_editor(self) -> None:
+        """Compose in $EDITOR (blocking editors), load the result into the prompt."""
+        if self._busy:
+            self._write_line("A run is already in progress — wait for it to finish.")
+            return
+        import os as _os
+
+        try:
+            inp = self.query_one("#prompt-input", Input)
+            draft_text = inp.value
+        except Exception:
+            draft_text = ""
+        here = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+        draft = _os.path.join(here, ".data", "draft.txt")
+        try:
+            _os.makedirs(_os.path.dirname(draft), exist_ok=True)
+            with open(draft, "w", encoding="utf-8") as f:
+                f.write(draft_text)
+        except Exception as e:
+            self._write_line(f"Editor failed: cannot write draft ({e})")
+            return
+        editor = _os.environ.get("EDITOR") or ("notepad" if _os.name == "nt" else "nano")
+        self._write_line(f"Opening {editor} — save + close to load into the prompt.")
+        self._busy = True
+
+        async def _run() -> None:
+            import asyncio as _aio
+            import shlex as _shlex
+            import subprocess as _sp
+
+            try:
+                from textual.app import SuspendNotSupported
+            except Exception:
+                SuspendNotSupported = RuntimeError
+            async def _launch() -> object:
+                args = _shlex.split(editor, posix=_os.name != "nt")
+                return await _aio.to_thread(
+                    _sp.run,
+                    [*args, draft],
+                    stdin=_sp.DEVNULL,
+                    stdout=_sp.DEVNULL,
+                    stderr=_sp.DEVNULL,
+                    timeout=300,
+                )
+
+            try:
+                try:
+                    # suspend() hands the terminal to the editor. Headless/test
+                    # environments reject it — there we run detached since
+                    # stdio is already DEVNULL-routed.
+                    with self.suspend():
+                        proc = await _launch()
+                except SuspendNotSupported:
+                    proc = await _launch()
+                if proc.returncode not in (0, None):
+                    self._write_line(f"Editor exited with code {proc.returncode} — draft kept.")
+                try:
+                    with open(draft, encoding="utf-8") as f:
+                        content = f.read().strip()
+                except Exception:
+                    content = ""
+                # NOTE: this worker runs on the app thread (async, not OS thread),
+                # so widget calls are direct — call_from_thread would raise here.
+                if content:
+                    self._set_prompt(content)
+                    self._write_line("Draft loaded into the prompt.")
+                else:
+                    self._write_line("Draft empty — prompt unchanged.")
+            except Exception as e:
+                self._write_line(f"[editor failed: {e}]")
+            finally:
+                self._busy = False
+
+        self.run_worker(_run, exclusive=False, description="editor")
+
+    def _set_prompt(self, text: str) -> None:
+        try:
+            inp = self.query_one("#prompt-input", Input)
+            inp.value = text
+            inp.focus()
+        except Exception:
+            pass
+
     def _dispatch(self, cmd: str, auto_yes: bool, rest: list[str] | None = None) -> None:
         rest = [r for r in (rest or []) if r != "--yes"]
         if cmd in ("quit", "exit"):
@@ -804,6 +1068,10 @@ class AfterTraceApp(App):
             "summarize",
             "models",
             "connect",
+            "themes",
+            "share",
+            "editor",
+            "details",
         ):
             if cmd == "new":
                 self.query_one("#transcript", RichLog).clear()
@@ -823,6 +1091,19 @@ class AfterTraceApp(App):
                 return
             if cmd == "connect":
                 self._open_connect()
+                return
+            if cmd == "themes":
+                self._switch_theme(" ".join(rest))
+                return
+            if cmd == "details":
+                self._details = not self._details
+                self._write_line(f"Run details {'on' if self._details else 'off'}.")
+                return
+            if cmd == "share":
+                self._share_transcript()
+                return
+            if cmd == "editor":
+                self._open_editor()
                 return
             if self._busy:
                 self._write_line("A run is already in progress — wait for it to finish.")
@@ -878,6 +1159,15 @@ class AfterTraceApp(App):
             width=width,
             legacy_windows=False,
         )
+        import time as _time
+
+        t0 = _time.monotonic()
+        if self._details:
+            import datetime as _dt
+
+            self.call_from_thread(
+                self._write_line, f"[{cmd} started {_dt.datetime.now().strftime('%H:%M:%S')}]"
+            )
         try:
             if cmd == "check":
                 tconsole.print(
@@ -972,6 +1262,12 @@ class AfterTraceApp(App):
         except Exception as e:
             self.call_from_thread(self._write_line, f"[{cmd} failed: {e}]")
         finally:
+            if self._details:
+                import time as _t2
+
+                self.call_from_thread(
+                    self._write_line, f"[{cmd} done in {_t2.monotonic() - t0:.1f}s]"
+                )
             self._busy = False
 
     # ----- approval bridge (worker thread -> modal -> bool) -----

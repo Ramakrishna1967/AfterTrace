@@ -41,6 +41,21 @@ def test_suggest_command():
     assert suggest_command("xyzzy") is None
 
 
+def test_theme_variables_are_literal_hex():
+    """Inline Rich styles can only use literal hexes (derived 'auto %' crashes Rich)."""
+    import re
+
+    from cli.tui import _define_themes
+
+    hexre = re.compile(r"^#[0-9a-fA-F]{6}$")
+    names = set()
+    for theme in _define_themes():
+        names.add(theme.name)
+        for key in ("muted", "bright", "accent", "warn", "line"):
+            assert hexre.match(theme.variables[key]), (theme.name, key)
+    assert names == {"aftertrace", "light", "matrix"}
+
+
 async def _wait_until(pred, timeout=30.0):
     for _ in range(int(timeout * 5)):
         if pred():
@@ -266,3 +281,94 @@ async def test_tui_sessions_export_seeded(monkeypatch, tmp_path):
     assert json.loads(raw)["incident"]["scenario"] == "s9-test"
     for p in got:
         os.remove(p)
+
+
+def test_format_elapsed():
+    from cli.tui import format_elapsed
+
+    assert format_elapsed(0) == "0:00"
+    assert format_elapsed(7) == "0:07"
+    assert format_elapsed(65) == "1:05"
+    assert format_elapsed(3723) == "1:02:03"
+
+
+def test_tui_config_roundtrip(monkeypatch, tmp_path):
+    from cli.tui import load_tui_config, save_tui_config
+
+    monkeypatch.setenv("AFTERTRACE_TUI_CONFIG", str(tmp_path / "tui.json"))
+    assert load_tui_config() == {}
+    save_tui_config({"theme": "matrix"})
+    assert load_tui_config() == {"theme": "matrix"}
+
+
+async def test_tui_themes_switch_changes_rendering(monkeypatch, tmp_path):
+    monkeypatch.setenv("AFTERTRACE_TUI_CONFIG", str(tmp_path / "tui.json"))
+    app = AfterTraceApp(force_local=True)
+    async with app.run_test() as pilot:
+        await pilot.click("#prompt-input")
+        await _submit(pilot, app, "/themes")
+        await pilot.pause(0.5)
+        assert any("aftertrace" in ln and "matrix" in ln for ln in app.captured)
+        before = app.export_screenshot()
+        await _submit(pilot, app, "/themes matrix")
+        await pilot.pause(0.8)
+        assert app.theme == "matrix"
+        assert any("Theme: matrix" in ln for ln in app.captured)
+        after = app.export_screenshot()
+        assert before != after, "theme switch must visibly re-skin the UI"
+        import json as _json
+
+        assert _json.loads(open(tmp_path / "tui.json", encoding="utf-8").read()) == {"theme": "matrix"}
+        await _submit(pilot, app, "/themes aftertrace")
+        await pilot.pause(0.8)
+        assert app.theme == "aftertrace"
+        await _submit(pilot, app, "/themes nosuch")
+        await pilot.pause(0.5)
+        assert any("Unknown theme" in ln for ln in app.captured)
+
+
+async def test_tui_share_details_editor(monkeypatch, tmp_path):
+    import glob as _g
+    import sys as _sys
+
+    monkeypatch.setenv("AFTERTRACE_TUI_CONFIG", str(tmp_path / "tui.json"))
+    helper = tmp_path / "fake_editor.py"
+    helper.write_text(
+        "import sys\nopen(sys.argv[1], 'a', encoding='utf-8').write('EDITOR-HELLO')\n",
+        encoding="utf-8",
+    )
+    if " " in str(helper):
+        pytest.skip("tmp path has spaces; editor argv test needs clean path")
+    monkeypatch.setenv("EDITOR", f"{_sys.executable} {helper}")
+    app = AfterTraceApp(force_local=True)
+    async with app.run_test() as pilot:
+        await pilot.click("#prompt-input")
+        await _submit(pilot, app, "/details")
+        await pilot.pause(0.3)
+        assert any("details on" in ln.lower() for ln in app.captured)
+        await _submit(pilot, app, "/check")
+        ok = await _wait_until(lambda: any("done in" in ln for ln in app.captured), timeout=30)
+        assert ok, app.captured
+        await _submit(pilot, app, "/details")
+        await pilot.pause(0.3)
+        await _submit(pilot, app, "/share")
+        await pilot.pause(0.8)
+        import cli.tui as _tmod
+
+        sharedir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(_tmod.__file__))),
+            ".data",
+            "shared",
+        )
+        got = _g.glob(os.path.join(sharedir, "aftertrace-*.md"))
+        assert got, "share artifact should exist"
+        body = open(got[-1], encoding="utf-8").read()
+        assert "AFTERTRACE transcript" in body and "Backend:" in body
+        for p in got:
+            os.remove(p)
+        await _submit(pilot, app, "/editor")
+        ok = await _wait_until(
+            lambda: app.query_one("#prompt-input").value == "EDITOR-HELLO", timeout=60
+        )
+        assert ok, app.query_one("#prompt-input").value
+        assert not app._busy
