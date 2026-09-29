@@ -8,6 +8,8 @@ repair, and verifies the fix — with a human approval gate on every write.
 Core invariant: *memory proposes hypotheses; deterministic checks establish
 facts; authorization permits writes; verification determines recovery.*
 
+🎬 **Live demo:** https://youtu.be/DqRyujWagHg?si=FOxySEdE96FlqQDE
+
 ## Why it exists
 
 Silent retrieval failures are the worst kind: ingestion jobs report success,
@@ -34,22 +36,29 @@ are re-verified first, and a mismatched memory is explicitly rejected.
 
 ## Quickstart
 
-Requirements: Python 3.11+. One command installs everything, including the
-`aftertrace` CLI:
+Requirements: Python 3.11+. Install from PyPI (includes the `aftertrace` CLI):
 
-```bash
-pip install -e .
+```powershell
+pip install AfterTrace
 aftertrace doctor     # environment, dependencies, and storage check
 aftertrace demo --local --yes   # full end-to-end demonstration
 ```
 
+From source instead:
+
+```powershell
+git clone https://github.com/Ramakrishna1967/AfterTrace
+Set-Location AfterTrace
+pip install -e .
+```
+
 For live backends instead of simulation, set the Cloud credentials first:
 
-```bash
-set QDRANT_URL=https://xxx.qdrant.cloud
-set QDRANT_API_KEY=...
-set HINDSIGHT_BASE_URL=https://...
-set HINDSIGHT_API_KEY=...
+```powershell
+$env:QDRANT_URL = "https://xxx.qdrant.cloud"
+$env:QDRANT_API_KEY = "..."
+$env:HINDSIGHT_BASE_URL = "https://..."
+$env:HINDSIGHT_API_KEY = "..."
 ```
 
 Without credentials the tool runs in clearly labeled `LOCAL-SIM` /
@@ -89,9 +98,10 @@ A full-screen console with a prompt box, slash-command palette (`ctrl+p`),
 tab completion, and modal approvals. Plain-English input is routed to the
 matching flow ("fix the alias drift", "show past runs"). Power inputs:
 `@path` injects a project file, `!command` runs a shell command.
-Additional flows: `/history`, `/memory`, `/rerun` (`ctrl+r`), `/undo`,
-`/redo`, `/compact`, `/models`, `/connect`, `/themes`, `/share`, `/editor`,
-`/details`.
+All flows: `/scenario1 /scenario2 /scenario3 /demo /history /memory /rerun`
+(`ctrl+r`), `/new`, `/sessions`, `/export`, `/undo`, `/redo`, `/compact`,
+`/models`, `/connect`, `/themes`, `/share`, `/editor`, `/details`, `/check`,
+`/reset`, `/quit`.
 
 ## Architecture
 
@@ -133,11 +143,21 @@ Ops units and native Qdrant config live in `ops/`.
 
 ## Testing
 
-```bash
+```powershell
 python -m pytest tests/ -q   # full suite: unit, integration, contract, evaluation
 python -m ruff check cli src tests
 python -m ruff format --check cli src tests
 ```
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| `aftertrace` not recognized | Reinstall (`pip install -e .`) and restart the terminal so `Scripts/` is on `PATH` |
+| Demo fails partway | Run `aftertrace doctor` first; then `aftertrace reset` and re-run the demo |
+| Stale results after a run | `aftertrace reset` clears the local log and cached memory |
+| `Unknown command` in the TUI | Check spelling — it suggests the closest match; `tab` completes, `ctrl+p` lists all |
+| Approval modal never appears | Don't pass `--yes` if you want the prompt; in the TUI it always appears |
 
 ## Project structure
 
